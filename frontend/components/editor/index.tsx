@@ -1228,4 +1228,17 @@ export default function CodeEditor({
   )
 }
 
+/**
+ * Configure the typescript compiler to detect JSX and load type definitions
+ */
+const defaultCompilerOptions: monaco.languages.typescript.CompilerOptions = {
+  allowJs: true,
+  allowSyntheticDefaultImports: true,
+  allowNonTsExtensions: true,
+  resolveJsonModule: true,
 
+  jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
+  module: monaco.languages.typescript.ModuleKind.ESNext,
+  moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+  target: monaco.languages.typescript.ScriptTarget.ESNext,
+}
