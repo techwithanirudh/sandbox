@@ -145,7 +145,7 @@ export default function CodeEditor({
   const generateRef = useRef<HTMLDivElement>(null)
   const suggestionRef = useRef<HTMLDivElement>(null)
   const generateWidgetRef = useRef<HTMLDivElement>(null)
-  const previewPanelRef = useRef<ImperativePanelHandle>(null)
+  const { previewPanelRef } = usePreview();  
   const editorPanelRef = useRef<ImperativePanelHandle>(null)
   const previewWindowRef = useRef<{ refreshIframe: () => void }>(null)
 
@@ -827,6 +827,16 @@ export default function CodeEditor({
     })
   }
 
+  const togglePreviewPanel = () => {
+    if (isPreviewCollapsed) {
+      previewPanelRef.current?.expand();
+      setIsPreviewCollapsed(false);
+    } else {
+      previewPanelRef.current?.collapse();
+      setIsPreviewCollapsed(true);
+    }
+  };
+
   // On disabled access for shared users, show un-interactable loading placeholder + info modal
   if (disableAccess.isDisabled)
     return (
@@ -1061,7 +1071,7 @@ export default function CodeEditor({
           <ResizablePanel defaultSize={40}>
             <ResizablePanelGroup direction="vertical">
               <ResizablePanel
-                ref={usePreview().previewPanelRef}
+                ref={previewPanelRef}
                 defaultSize={4}
                 collapsedSize={4}
                 minSize={25}
@@ -1071,10 +1081,7 @@ export default function CodeEditor({
                 onExpand={() => setIsPreviewCollapsed(false)}
               >
                 <PreviewWindow
-                  open={() => {
-                    usePreview().previewPanelRef.current?.expand()
-                    setIsPreviewCollapsed(false)
-                  }}
+                  open={togglePreviewPanel}
                   collapsed={isPreviewCollapsed}
                   src={previewURL}
                   ref={previewWindowRef}
