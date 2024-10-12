@@ -18,7 +18,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
-import { FileJson, Loader2, Sparkles, TerminalSquare } from "lucide-react"
+import { FileJson, Loader2, Sparkles, TerminalSquare, ArrowDownToLine, ArrowRightToLine } from "lucide-react"
 import Tab from "../ui/tab"
 import Sidebar from "./sidebar"
 import GenerateInput from "./generate"
@@ -145,7 +145,7 @@ export default function CodeEditor({
   const generateRef = useRef<HTMLDivElement>(null)
   const suggestionRef = useRef<HTMLDivElement>(null)
   const generateWidgetRef = useRef<HTMLDivElement>(null)
-  const { previewPanelRef } = usePreview();  
+  const { previewPanelRef } = usePreview();
   const editorPanelRef = useRef<ImperativePanelHandle>(null)
   const previewWindowRef = useRef<{ refreshIframe: () => void }>(null)
 
@@ -416,7 +416,7 @@ export default function CodeEditor({
       })
     }
   }, [generate.show])
-  
+
   // Suggestion widget effect
   useEffect(() => {
     if (!suggestionRef.current || !editorRef) return
@@ -686,9 +686,9 @@ export default function CodeEditor({
 
   const selectFile = (tab: TTab) => {
     if (tab.id === activeFileId) return;
-  
+
     setGenerate((prev) => ({ ...prev, show: false }));
-  
+
     // Check if the tab already exists in the list of open tabs
     const exists = tabs.find((t) => t.id === tab.id);
     setTabs((prev) => {
@@ -700,7 +700,7 @@ export default function CodeEditor({
       // If the tab doesn't exist, add it to the list of tabs and make it active
       return [...prev, tab];
     });
-  
+
     // If the file's content is already cached, set it as the active content
     if (fileContents[tab.id]) {
       setActiveFileContent(fileContents[tab.id]);
@@ -711,7 +711,7 @@ export default function CodeEditor({
         setActiveFileContent(response);
       });
     }
-  
+
     // Set the editor language based on the file type
     setEditorLanguage(processFileType(tab.name));
     // Set the active file ID to the new tab
@@ -835,6 +835,12 @@ export default function CodeEditor({
       previewPanelRef.current?.collapse();
       setIsPreviewCollapsed(true);
     }
+  };
+
+  const [isHorizontalLayout, setIsHorizontalLayout] = useState(false);
+
+  const toggleLayout = () => {
+    setIsHorizontalLayout(prev => !prev);
   };
 
   // On disabled access for shared users, show un-interactable loading placeholder + info modal
@@ -972,12 +978,12 @@ export default function CodeEditor({
         />
 
         {/* Shadcn resizeable panels: https://ui.shadcn.com/docs/components/resizable */}
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup direction={isHorizontalLayout ? "vertical" : "horizontal"}>
           <ResizablePanel
             className="p-2 flex flex-col"
             maxSize={80}
             minSize={30}
-            defaultSize={60}
+            defaultSize={isHorizontalLayout ? 70 : 60}
             ref={editorPanelRef}
           >
             <div className="h-10 w-full flex gap-2 overflow-auto tab-scroll">
@@ -1022,7 +1028,7 @@ export default function CodeEditor({
                       onChange={(value) => {
                         // If the new content is different from the cached content, update it
                         if (value !== fileContents[activeFileId]) {
-                            setActiveFileContent(value ?? ""); // Update the active file content
+                          setActiveFileContent(value ?? ""); // Update the active file content
                           // Mark the file as unsaved by setting 'saved' to false
                           setTabs((prev) =>
                             prev.map((tab) =>
@@ -1068,24 +1074,38 @@ export default function CodeEditor({
             </div>
           </ResizablePanel>
           <ResizableHandle />
-          <ResizablePanel defaultSize={40}>
-            <ResizablePanelGroup direction="vertical">
+          <ResizablePanel defaultSize={isHorizontalLayout ? 30 : 40}>
+            <ResizablePanelGroup direction={isHorizontalLayout ? "horizontal" : "vertical"}>
               <ResizablePanel
                 ref={previewPanelRef}
                 defaultSize={4}
-                collapsedSize={4}
+                collapsedSize={isHorizontalLayout ? 20 : 4}
                 minSize={25}
                 collapsible
                 className="p-2 flex flex-col"
                 onCollapse={() => setIsPreviewCollapsed(true)}
                 onExpand={() => setIsPreviewCollapsed(false)}
               >
-                <PreviewWindow
-                  open={togglePreviewPanel}
-                  collapsed={isPreviewCollapsed}
-                  src={previewURL}
-                  ref={previewWindowRef}
-                />
+                <div className="flex items-center justify-between">
+                  <Button onClick={toggleLayout} size="sm" variant="ghost" className="mr-2 border">
+                    {isHorizontalLayout ? <ArrowRightToLine className="w-4 h-4" /> : <ArrowDownToLine className="w-4 h-4" />}
+                  </Button>
+                  <PreviewWindow
+                    open={togglePreviewPanel}
+                    collapsed={isPreviewCollapsed}
+                    src={previewURL}
+                    ref={previewWindowRef}
+                  />
+                </div>
+                {!isPreviewCollapsed && (
+                  <div className="w-full grow rounded-md overflow-hidden bg-foreground mt-2">
+                    <iframe
+                      width={"100%"}
+                      height={"100%"}
+                      src={previewURL}
+                  />
+                </div>
+                )}
               </ResizablePanel>
               <ResizableHandle />
               <ResizablePanel

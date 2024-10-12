@@ -33,10 +33,6 @@ ref: React.Ref<{
 
   return (
     <>
-      <div
-        className={`${collapsed ? "h-full" : "h-10"
-          } select-none w-full flex gap-2`}
-      >
         <div className="h-8 rounded-md px-3 bg-secondary flex items-center w-full justify-between">
           <div className="text-xs">Preview</div>
           <div className="flex space-x-1 translate-x-1">
@@ -65,18 +61,6 @@ ref: React.Ref<{
             )}
           </div>
         </div>
-      </div>
-      {collapsed ? null : (
-        <div className="w-full grow rounded-md overflow-hidden bg-foreground">
-          <iframe
-            key={iframeKey}
-            ref={frameRef}
-            width={"100%"}
-            height={"100%"}
-            src={src}
-          />
-        </div>
-      )}
     </>
   )
 })
