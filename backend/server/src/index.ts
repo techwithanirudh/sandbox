@@ -192,7 +192,7 @@ io.on("connection", async (socket) => {
     });
 
     const sandboxFiles = await getSandboxFiles(data.sandboxId);
-    const projectDirectory = path.join(dirName, "projects", data.sandboxId);
+    const projectDirectory = path.posix.join(dirName, "projects", data.sandboxId);
     const containerFiles = containers[data.sandboxId].files;
     const fileWatchers: WatchHandle[] = [];
 
@@ -226,7 +226,7 @@ io.on("connection", async (socket) => {
       // Copy all files from the project to the container
       const promises = sandboxFiles.fileData.map(async (file) => {
         try {
-          const filePath = path.join(dirName, file.id);
+          const filePath = path.posix.join(dirName, file.id);
           const parentDirectory = path.dirname(filePath);
           if (!containerFiles.exists(parentDirectory)) {
             await containerFiles.makeDir(parentDirectory);
@@ -254,7 +254,7 @@ io.on("connection", async (socket) => {
             }
 
             // This is the absolute file path in the container
-            const containerFilePath = path.join(directory, event.name);
+            const containerFilePath = path.posix.join(directory, event.name);
             // This is the file path relative to the home directory
             const sandboxFilePath = removeDirName(containerFilePath, dirName + "/");
             // This is the directory being watched relative to the home directory
