@@ -152,3 +152,24 @@
 .tab-scroll::-webkit-scrollbar {
   display: none;
 }
+
+.fade-r {
+  --mask-gradient: linear-gradient(
+    to right,
+    white 0%,
+    white calc(100% - var(--fade-size)),
+    transparent
+  );
+  -webkit-mask-image: var(--mask-gradient);
+  mask-image: var(--mask-gradient);
+}
+.fade-l {
+  --mask-gradient: linear-gradient(
+    to left,
+    white var(--fade-size),
+    white 100%,
+    transparent
+  );
+  -webkit-mask-image: var(--mask-gradient);
+  mask-image: var(--mask-gradient);
+}
