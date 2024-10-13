@@ -37,6 +37,7 @@ import { Button } from "../ui/button"
 import React from "react"
 import { parseTSConfigToMonacoOptions } from "@/lib/tsconfig"
 import { deepMerge } from "@/lib/utils"
+import AIChat from "./AIChat"
 
 export default function CodeEditor({
   userData,
@@ -72,6 +73,12 @@ export default function CodeEditor({
     isDisabled: false,
     message: "",
   })
+
+  // Layout state
+  const [isHorizontalLayout, setIsHorizontalLayout] = useState(false);
+
+  // AI Chat state
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
   // File state
   const [files, setFiles] = useState<(TFolder | TFile)[]>([])
@@ -513,20 +520,23 @@ export default function CodeEditor({
     [socket, fileContents]
   );
 
-  // Keydown event listener to trigger file save on Ctrl+S or Cmd+S
+  // Keydown event listener to trigger file save on Ctrl+S or Cmd+S, and toggle AI chat on Ctrl+L or Cmd+L
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         debouncedSaveData(activeFileId);
+      } else if (e.key === "l" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setIsAIChatOpen(prev => !prev);
       }
     }
     document.addEventListener("keydown", down)
-
+  
     return () => {
       document.removeEventListener("keydown", down)
     }
-  }, [activeFileId, tabs, debouncedSaveData])
+  }, [activeFileId, tabs, debouncedSaveData, setIsAIChatOpen])
 
   // Liveblocks live collaboration setup effect
   useEffect(() => {
@@ -837,8 +847,6 @@ export default function CodeEditor({
     }
   };
 
-  const [isHorizontalLayout, setIsHorizontalLayout] = useState(false);
-
   const toggleLayout = () => {
     setIsHorizontalLayout(prev => !prev);
   };
@@ -1075,54 +1083,58 @@ export default function CodeEditor({
           </ResizablePanel>
           <ResizableHandle />
           <ResizablePanel defaultSize={isHorizontalLayout ? 30 : 30}>
-            <ResizablePanelGroup direction={isHorizontalLayout ? "horizontal" : "vertical"}>
-              <ResizablePanel
-                ref={previewPanelRef}
-                defaultSize={4}
-                collapsedSize={isHorizontalLayout ? 20 : 4}
-                minSize={25}
-                collapsible
-                className="p-2 flex flex-col"
-                onCollapse={() => setIsPreviewCollapsed(true)}
-                onExpand={() => setIsPreviewCollapsed(false)}
-              >
-                <div className="flex items-center justify-between">
-                  <Button onClick={toggleLayout} size="sm" variant="ghost" className="mr-2 border">
-                    {isHorizontalLayout ? <ArrowRightToLine className="w-4 h-4" /> : <ArrowDownToLine className="w-4 h-4" />}
-                  </Button>
-                  <PreviewWindow
-                    open={togglePreviewPanel}
-                    collapsed={isPreviewCollapsed}
-                    src={previewURL}
-                    ref={previewWindowRef}
-                  />
-                </div>
-                {!isPreviewCollapsed && (
-                  <div className="w-full grow rounded-md overflow-hidden bg-foreground mt-2">
-                    <iframe
-                      width={"100%"}
-                      height={"100%"}
+            {isAIChatOpen ? (
+              <AIChat />
+            ) : (
+              <ResizablePanelGroup direction={isHorizontalLayout ? "horizontal" : "vertical"}>
+                <ResizablePanel
+                  ref={previewPanelRef}
+                  defaultSize={4}
+                  collapsedSize={isHorizontalLayout ? 20 : 4}
+                  minSize={25}
+                  collapsible
+                  className="p-2 flex flex-col"
+                  onCollapse={() => setIsPreviewCollapsed(true)}
+                  onExpand={() => setIsPreviewCollapsed(false)}
+                >
+                  <div className="flex items-center justify-between">
+                    <Button onClick={toggleLayout} size="sm" variant="ghost" className="mr-2 border">
+                      {isHorizontalLayout ? <ArrowRightToLine className="w-4 h-4" /> : <ArrowDownToLine className="w-4 h-4" />}
+                    </Button>
+                    <PreviewWindow
+                      open={togglePreviewPanel}
+                      collapsed={isPreviewCollapsed}
                       src={previewURL}
-                  />
-                </div>
-                )}
-              </ResizablePanel>
-              <ResizableHandle />
-              <ResizablePanel
-                defaultSize={50}
-                minSize={20}
-                className="p-2 flex flex-col"
-              >
-                {isOwner ? (
-                  <Terminals />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-lg font-medium text-muted-foreground/50 select-none">
-                    <TerminalSquare className="w-4 h-4 mr-2" />
-                    No terminal access.
+                      ref={previewWindowRef}
+                    />
                   </div>
-                )}
-              </ResizablePanel>
-            </ResizablePanelGroup>
+                  {!isPreviewCollapsed && (
+                    <div className="w-full grow rounded-md overflow-hidden bg-foreground mt-2">
+                      <iframe
+                        width={"100%"}
+                        height={"100%"}
+                        src={previewURL}
+                      />
+                    </div>
+                  )}
+                </ResizablePanel>
+                <ResizableHandle />
+                <ResizablePanel
+                  defaultSize={50}
+                  minSize={20}
+                  className="p-2 flex flex-col"
+                >
+                  {isOwner ? (
+                    <Terminals />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-lg font-medium text-muted-foreground/50 select-none">
+                      <TerminalSquare className="w-4 h-4 mr-2" />
+                      No terminal access.
+                    </div>
+                  )}
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            )}
           </ResizablePanel>
         </ResizablePanelGroup>
       </PreviewProvider>
