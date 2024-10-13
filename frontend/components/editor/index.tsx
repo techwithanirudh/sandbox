@@ -1074,7 +1074,7 @@ export default function CodeEditor({
             </div>
           </ResizablePanel>
           <ResizableHandle />
-          <ResizablePanel defaultSize={isHorizontalLayout ? 30 : 40}>
+          <ResizablePanel defaultSize={isHorizontalLayout ? 30 : 30}>
             <ResizablePanelGroup direction={isHorizontalLayout ? "horizontal" : "vertical"}>
               <ResizablePanel
                 ref={previewPanelRef}
