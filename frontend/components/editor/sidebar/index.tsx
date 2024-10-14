@@ -11,7 +11,7 @@ import {
 import SidebarFile from "./file"
 import SidebarFolder from "./folder"
 import { Sandbox, TFile, TFolder, TTab } from "@/lib/types"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import New from "./new"
 import { Socket } from "socket.io-client"
 import { Switch } from "@/components/ui/switch"
@@ -22,6 +22,7 @@ import {
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter"
 import Button from "@/components/ui/customButton"
 import { Skeleton } from "@/components/ui/skeleton"
+import { sortFileExplorer } from "@/lib/utils"
 
 export default function Sidebar({
   sandboxData,
@@ -55,7 +56,9 @@ export default function Sidebar({
 
   const [creatingNew, setCreatingNew] = useState<"file" | "folder" | null>(null)
   const [movingId, setMovingId] = useState("")
-  console.log(files)
+  const sortedFiles = useMemo(() => {
+    return sortFileExplorer(files)
+  }, [files])
   useEffect(() => {
     const el = ref.current
 
@@ -136,7 +139,7 @@ export default function Sidebar({
             isDraggedOver ? "bg-secondary/50" : ""
           } rounded-sm w-full mt-1 flex flex-col`}
         > */}
-          {files.length === 0 ? (
+          {sortedFiles.length === 0 ? (
             <div className="w-full flex flex-col justify-center">
               {new Array(6).fill(0).map((_, i) => (
                 <Skeleton key={i} className="h-[1.625rem] mb-0.5 rounded-sm" />
@@ -144,7 +147,7 @@ export default function Sidebar({
             </div>
           ) : (
             <>
-              {files.map((child) =>
+              {sortedFiles.map((child) =>
                 child.type === "file" ? (
                   <SidebarFile
                     key={child.id}
