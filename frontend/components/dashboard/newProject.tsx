@@ -154,9 +154,12 @@ export default function NewProjectModal({
                     id: item.id,
                     index: i,
                   })}
-                  className={`${
-                    selected === item.id ? "border-foreground" : "border-border"
-                  } rounded-md border bg-card text-card-foreground shadow text-left p-4 flex flex-col transition-all focus-visible:outline-none focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed`}
+                  className={cn(
+                    selected === item.id
+                      ? "shadow-foreground"
+                      : "shadow-border",
+                    "shadow-[0_0_0_1px_inset] rounded-md border bg-card text-card-foreground text-left p-4 flex flex-col transition-all focus-visible:outline-none focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                  )}
                 >
                   <div className="space-x-2 flex items-center justify-start w-full">
                     <Image alt="" src={item.icon} width={20} height={20} />
