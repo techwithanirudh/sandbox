@@ -6,69 +6,61 @@ export interface Env {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Handle CORS preflight requests
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
+    }
+
     if (request.method !== "GET") {
       return new Response("Method Not Allowed", { status: 405 });
     }
 
     const url = new URL(request.url);
-    // const fileName = url.searchParams.get("fileName");
-    // const line = url.searchParams.get("line");
     const instructions = url.searchParams.get("instructions");
-    const code = url.searchParams.get("code");
+    const context = url.searchParams.get("context");
 
-    const prompt = `
-Make the following changes to the code below:
-- ${instructions}
+    if (!instructions) {
+      return new Response("Missing instructions parameter", { status: 400 });
+    }
 
-Return the complete code chunk. Do not refer to other code files. Do not add code before or after the chunk. Start your reponse with \`\`\`, and end with \`\`\`. Do not include any other text.
+    const prompt = `You are an intelligent programming assistant. Please respond to the following request:
 
+${instructions}
+
+${context ? `Context:\n${context}\n` : ''}
+
+If your response includes code, please format it using triple backticks (\`\`\`) with the appropriate language identifier. For example:
+
+\`\`\`python
+print("Hello, World!")
 \`\`\`
-${code}
-\`\`\`
-`;
-console.log(prompt);
 
-    try {
+Provide a clear and concise explanation along with any code snippets.`;
+
+    try { 
       const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
-      interface TextBlock {
-        type: "text";
-        text: string;
-      }
-
-      interface ToolUseBlock {
-        type: "tool_use";
-        tool_use: {
-          // Add properties if needed
-        };
-      }
-
-      type ContentBlock = TextBlock | ToolUseBlock;
-
-      function getTextContent(content: ContentBlock[]): string {
-        for (const block of content) {
-          if (block.type === "text") {
-            return block.text;
-          }
-        }
-        return "No text content found";
-      }
-
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20240620",
+        model: "claude-3-opus-20240229",
         max_tokens: 1024,
         messages: [{ role: "user", content: prompt }],
       });
 
-      const message = response.content as ContentBlock[];
-      const textBlockContent = getTextContent(message);
+      const assistantResponse = response.content[0].type === 'text' ? response.content[0].text : '';
 
-      const pattern = /```[a-zA-Z]*\n([\s\S]*?)\n```/;
-      const match = textBlockContent.match(pattern);
-
-      const codeContent = match ? match[1] : "Error: Could not extract code.";
-
-      return new Response(JSON.stringify({ "response": codeContent }))
+      // When sending the response, include CORS headers
+      return new Response(JSON.stringify({ "response": assistantResponse }), {
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
     } catch (error) {
       console.error("Error:", error);
       return new Response("Internal Server Error", { status: 500 });
