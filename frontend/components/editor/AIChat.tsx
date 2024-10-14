@@ -60,7 +60,7 @@ export default function AIChat() {
         instructions: input,
         ...(context && { context })
       });
-      const response = await fetch(`http://127.0.0.1:8787/api?${queryParams}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_AI_WORKER_URL}/api?${queryParams}`, {
         method: 'GET',
         signal: abortControllerRef.current.signal,
       });

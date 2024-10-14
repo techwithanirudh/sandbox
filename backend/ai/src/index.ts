@@ -47,7 +47,7 @@ Provide a clear and concise explanation along with any code snippets. Keep your 
       const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
       const stream = await anthropic.messages.create({
-        model: "claude-3-opus-20240229",
+        model: "claude-3-5-sonnet-20240620",
         max_tokens: 1024,
         messages: [{ role: "user", content: prompt }],
         stream: true,
