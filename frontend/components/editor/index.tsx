@@ -970,7 +970,6 @@ export default function CodeEditor({
             />
           ) : null}
         </div>
-
         {/* Main editor components */}
         <Sidebar
           sandboxData={sandboxData}
@@ -984,158 +983,172 @@ export default function CodeEditor({
           addNew={(name, type) => addNew(name, type, setFiles, sandboxData)}
           deletingFolderId={deletingFolderId}
         />
-
-        {/* Shadcn resizeable panels: https://ui.shadcn.com/docs/components/resizable */}
-        <ResizablePanelGroup direction={isHorizontalLayout ? "vertical" : "horizontal"}>
-          <ResizablePanel
-            className="p-2 flex flex-col"
-            maxSize={80}
-            minSize={30}
-            defaultSize={isHorizontalLayout ? 70 : 60}
-            ref={editorPanelRef}
-          >
-            <div className="h-10 w-full flex gap-2 overflow-auto tab-scroll">
-              {/* File tabs */}
-              {tabs.map((tab) => (
-                <Tab
-                  key={tab.id}
-                  saved={tab.saved}
-                  selected={activeFileId === tab.id}
-                  onClick={(e) => {
-                    selectFile(tab)
-                  }}
-                  onClose={() => closeTab(tab.id)}
-                >
-                  {tab.name}
-                </Tab>
-              ))}
-            </div>
-            {/* Monaco editor */}
-            <div
-              ref={editorContainerRef}
-              className="grow w-full overflow-hidden rounded-md relative"
-            >
-              {!activeFileId ? (
-                <>
-                  <div className="w-full h-full flex items-center justify-center text-xl font-medium text-muted-foreground/50 select-none">
-                    <FileJson className="w-6 h-6 mr-3" />
-                    No file selected.
-                  </div>
-                </>
-              ) : // Note clerk.loaded is required here due to a bug: https://github.com/clerk/javascript/issues/1643
-                clerk.loaded ? (
-                  <>
-                    {provider && userInfo ? (
-                      <Cursors yProvider={provider} userInfo={userInfo} />
-                    ) : null}
-                    <Editor
-                      height="100%"
-                      language={editorLanguage}
-                      beforeMount={handleEditorWillMount}
-                      onMount={handleEditorMount}
-                      onChange={(value) => {
-                        // If the new content is different from the cached content, update it
-                        if (value !== fileContents[activeFileId]) {
-                          setActiveFileContent(value ?? ""); // Update the active file content
-                          // Mark the file as unsaved by setting 'saved' to false
-                          setTabs((prev) =>
-                            prev.map((tab) =>
-                              tab.id === activeFileId
-                                ? { ...tab, saved: false }
-                                : tab
-                            )
-                          )
-                        } else {
-                          // If the content matches the cached content, mark the file as saved
-                          setTabs((prev) =>
-                            prev.map((tab) =>
-                              tab.id === activeFileId
-                                ? { ...tab, saved: true }
-                                : tab
-                            )
-                          )
-                        }
+        {/* Outer ResizablePanelGroup for main layout */}
+        <ResizablePanelGroup direction="horizontal">
+          {/* Left side: Editor and Preview/Terminal */}
+          <ResizablePanel defaultSize={isAIChatOpen ? 80 : 100} minSize={50}>
+            <ResizablePanelGroup direction={isHorizontalLayout ? "vertical" : "horizontal"}>
+              <ResizablePanel
+                className="p-2 flex flex-col"
+                maxSize={80}
+                minSize={30}
+                defaultSize={70}
+                ref={editorPanelRef}
+              >
+                <div className="h-10 w-full flex gap-2 overflow-auto tab-scroll">
+                  {/* File tabs */}
+                  {tabs.map((tab) => (
+                    <Tab
+                      key={tab.id}
+                      saved={tab.saved}
+                      selected={activeFileId === tab.id}
+                      onClick={(e) => {
+                        selectFile(tab)
                       }}
-                      options={{
-                        tabSize: 2,
-                        minimap: {
-                          enabled: false,
-                        },
-                        padding: {
-                          bottom: 4,
-                          top: 4,
-                        },
-                        scrollBeyondLastLine: false,
-                        fixedOverflowWidgets: true,
-                        fontFamily: "var(--font-geist-mono)",
-                      }}
-                      theme="vs-dark"
-                      value={activeFileContent}
-                    />
-                  </>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-xl font-medium text-muted-foreground/50 select-none">
-                    <Loader2 className="animate-spin w-6 h-6 mr-3" />
-                    Waiting for Clerk to load...
-                  </div>
-                )}
-            </div>
-          </ResizablePanel>
-          <ResizableHandle />
-          <ResizablePanel defaultSize={isHorizontalLayout ? 30 : 30}>
-            {isAIChatOpen ? (
-              <AIChat />
-            ) : (
-              <ResizablePanelGroup direction={isHorizontalLayout ? "horizontal" : "vertical"}>
-                <ResizablePanel
-                  ref={previewPanelRef}
-                  defaultSize={4}
-                  collapsedSize={isHorizontalLayout ? 20 : 4}
-                  minSize={25}
-                  collapsible
-                  className="p-2 flex flex-col"
-                  onCollapse={() => setIsPreviewCollapsed(true)}
-                  onExpand={() => setIsPreviewCollapsed(false)}
+                      onClose={() => closeTab(tab.id)}
+                    >
+                      {tab.name}
+                    </Tab>
+                  ))}
+                </div>
+                {/* Monaco editor */}
+                <div
+                  ref={editorContainerRef}
+                  className="grow w-full overflow-hidden rounded-md relative"
                 >
-                  <div className="flex items-center justify-between">
-                    <Button onClick={toggleLayout} size="sm" variant="ghost" className="mr-2 border">
-                      {isHorizontalLayout ? <ArrowRightToLine className="w-4 h-4" /> : <ArrowDownToLine className="w-4 h-4" />}
-                    </Button>
-                    <PreviewWindow
-                      open={togglePreviewPanel}
-                      collapsed={isPreviewCollapsed}
-                      src={previewURL}
-                      ref={previewWindowRef}
-                    />
-                  </div>
-                  {!isPreviewCollapsed && (
-                    <div className="w-full grow rounded-md overflow-hidden bg-foreground mt-2">
-                      <iframe
-                        width={"100%"}
-                        height={"100%"}
+                  {!activeFileId ? (
+                    <>
+                      <div className="w-full h-full flex items-center justify-center text-xl font-medium text-muted-foreground/50 select-none">
+                        <FileJson className="w-6 h-6 mr-3" />
+                        No file selected.
+                      </div>
+                    </>
+                  ) : // Note clerk.loaded is required here due to a bug: https://github.com/clerk/javascript/issues/1643
+                    clerk.loaded ? (
+                      <>
+                        {provider && userInfo ? (
+                          <Cursors yProvider={provider} userInfo={userInfo} />
+                        ) : null}
+                        <Editor
+                          height="100%"
+                          language={editorLanguage}
+                          beforeMount={handleEditorWillMount}
+                          onMount={handleEditorMount}
+                          onChange={(value) => {
+                            // If the new content is different from the cached content, update it
+                            if (value !== fileContents[activeFileId]) {
+                              setActiveFileContent(value ?? ""); // Update the active file content
+                              // Mark the file as unsaved by setting 'saved' to false
+                              setTabs((prev) =>
+                                prev.map((tab) =>
+                                  tab.id === activeFileId
+                                    ? { ...tab, saved: false }
+                                    : tab
+                                )
+                              )
+                            } else {
+                              // If the content matches the cached content, mark the file as saved
+                              setTabs((prev) =>
+                                prev.map((tab) =>
+                                  tab.id === activeFileId
+                                    ? { ...tab, saved: true }
+                                    : tab
+                                )
+                              )
+                            }
+                          }}
+                          options={{
+                            tabSize: 2,
+                            minimap: {
+                              enabled: false,
+                            },
+                            padding: {
+                              bottom: 4,
+                              top: 4,
+                            },
+                            scrollBeyondLastLine: false,
+                            fixedOverflowWidgets: true,
+                            fontFamily: "var(--font-geist-mono)",
+                          }}
+                          theme="vs-dark"
+                          value={activeFileContent}
+                        />
+                      </>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xl font-medium text-muted-foreground/50 select-none">
+                        <Loader2 className="animate-spin w-6 h-6 mr-3" />
+                        Waiting for Clerk to load...
+                      </div>
+                    )}
+                </div>
+              </ResizablePanel>
+              <ResizableHandle />
+              <ResizablePanel defaultSize={30}>
+                <ResizablePanelGroup direction={
+                  isAIChatOpen && isHorizontalLayout ? "horizontal" :
+                  isAIChatOpen ? "vertical" :
+                  isHorizontalLayout ? "horizontal" :
+                  "vertical"
+                }>
+                  <ResizablePanel
+                    ref={previewPanelRef}
+                    defaultSize={isPreviewCollapsed ? 4 : 20}
+                    minSize={25}
+                    collapsedSize={isHorizontalLayout ? 20 : 4}
+                    className="p-2 flex flex-col"
+                    collapsible
+                    onCollapse={() => setIsPreviewCollapsed(true)}
+                    onExpand={() => setIsPreviewCollapsed(false)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <Button onClick={toggleLayout} size="sm" variant="ghost" className="mr-2 border">
+                        {isHorizontalLayout ? <ArrowRightToLine className="w-4 h-4" /> : <ArrowDownToLine className="w-4 h-4" />}
+                      </Button>
+                      <PreviewWindow
+                        open={togglePreviewPanel}
+                        collapsed={isPreviewCollapsed}
                         src={previewURL}
+                        ref={previewWindowRef}
                       />
                     </div>
-                  )}
-                </ResizablePanel>
-                <ResizableHandle />
-                <ResizablePanel
-                  defaultSize={50}
-                  minSize={20}
-                  className="p-2 flex flex-col"
-                >
-                  {isOwner ? (
-                    <Terminals />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-lg font-medium text-muted-foreground/50 select-none">
-                      <TerminalSquare className="w-4 h-4 mr-2" />
-                      No terminal access.
-                    </div>
-                  )}
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            )}
+                    {!isPreviewCollapsed && (
+                      <div className="w-full grow rounded-md overflow-hidden bg-foreground mt-2">
+                        <iframe
+                          width={"100%"}
+                          height={"100%"}
+                          src={previewURL}
+                        />
+                      </div>
+                    )}
+                  </ResizablePanel>
+                  <ResizableHandle />
+                  <ResizablePanel
+                    defaultSize={50}
+                    minSize={20}
+                    className="p-2 flex flex-col"
+                  >
+                    {isOwner ? (
+                      <Terminals />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-lg font-medium text-muted-foreground/50 select-none">
+                        <TerminalSquare className="w-4 h-4 mr-2" />
+                        No terminal access.
+                      </div>
+                    )}
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </ResizablePanel>
+          {/* Right side: AIChat (if open) */}
+          {isAIChatOpen && (
+            <>
+              <ResizableHandle />
+              <ResizablePanel defaultSize={30} minSize={15}>
+                <AIChat />
+              </ResizablePanel>
+            </>
+          )}
         </ResizablePanelGroup>
       </PreviewProvider>
     </>
