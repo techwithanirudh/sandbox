@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '../ui/button';
 import { Send, StopCircle, Copy, Check, ChevronDown, ChevronUp, X, CornerUpLeft, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -39,7 +39,7 @@ export default function AIChat() {
     }
   };
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (input.trim() === '' && !context) return;
 
     const newMessage: Message = { 
@@ -51,20 +51,17 @@ export default function AIChat() {
     setInput('');
     setIsContextExpanded(false);
     setIsGenerating(true);
-    setIsLoading(true); // Set loading state to true
+    setIsLoading(true);
 
     abortControllerRef.current = new AbortController();
 
     try {
       const queryParams = new URLSearchParams({
         instructions: input,
-        ...(context && { context }) // Include context only if it exists
+        ...(context && { context })
       });
       const response = await fetch(`http://127.0.0.1:8787/api?${queryParams}`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         signal: abortControllerRef.current.signal,
       });
 
@@ -72,22 +69,41 @@ export default function AIChat() {
         throw new Error('Failed to get AI response');
       }
 
-      const data = await response.json();
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
       const assistantMessage: Message = { role: 'assistant', content: '' };
       setMessages(prev => [...prev, assistantMessage]);
-      setIsLoading(false); // Set loading state to false once we start receiving the response
+      setIsLoading(false);
 
-      // Simulate text generation
-      for (let i = 0; i <= data.response.length; i++) {
-        if (abortControllerRef.current.signal.aborted) {
-          break;
+      let buffer = '';
+      const updateInterval = 100; // Update every 100ms
+      let lastUpdateTime = Date.now();
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const currentTime = Date.now();
+          if (currentTime - lastUpdateTime > updateInterval) {
+            setMessages(prev => {
+              const updatedMessages = [...prev];
+              const lastMessage = updatedMessages[updatedMessages.length - 1];
+              lastMessage.content = buffer;
+              return updatedMessages;
+            });
+            lastUpdateTime = currentTime;
+          }
         }
+
+        // Final update to ensure all content is displayed
         setMessages(prev => {
           const updatedMessages = [...prev];
-          updatedMessages[updatedMessages.length - 1].content = data.response.slice(0, i);
+          const lastMessage = updatedMessages[updatedMessages.length - 1];
+          lastMessage.content = buffer;
           return updatedMessages;
         });
-        await new Promise(resolve => setTimeout(resolve, 20));
       }
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -99,10 +115,10 @@ export default function AIChat() {
       }
     } finally {
       setIsGenerating(false);
-      setIsLoading(false); // Ensure loading state is set to false
+      setIsLoading(false);
       abortControllerRef.current = null;
     }
-  };
+  }, [input, context]);
 
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {

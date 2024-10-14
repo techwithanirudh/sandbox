@@ -29,7 +29,7 @@ export default {
       return new Response("Missing instructions parameter", { status: 400 });
     }
 
-    const prompt = `You are an intelligent programming assistant. Please respond to the following request:
+    const prompt = `You are an intelligent programming assistant. Please respond to the following request concisely:
 
 ${instructions}
 
@@ -41,24 +41,38 @@ If your response includes code, please format it using triple backticks (\`\`\`)
 print("Hello, World!")
 \`\`\`
 
-Provide a clear and concise explanation along with any code snippets.`;
+Provide a clear and concise explanation along with any code snippets. Keep your response brief and to the point`;
 
     try { 
       const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
-      const response = await anthropic.messages.create({
+      const stream = await anthropic.messages.create({
         model: "claude-3-opus-20240229",
         max_tokens: 1024,
         messages: [{ role: "user", content: prompt }],
+        stream: true,
       });
 
-      const assistantResponse = response.content[0].type === 'text' ? response.content[0].text : '';
+      const encoder = new TextEncoder();
 
-      // When sending the response, include CORS headers
-      return new Response(JSON.stringify({ "response": assistantResponse }), {
+      const streamResponse = new ReadableStream({
+        async start(controller) {
+          for await (const chunk of stream) {
+            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+              const bytes = encoder.encode(chunk.delta.text);
+              controller.enqueue(bytes);
+            }
+          }
+          controller.close();
+        },
+      });
+
+      return new Response(streamResponse, {
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "text/plain; charset=utf-8",
           "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
         },
       });
     } catch (error) {
