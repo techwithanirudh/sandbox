@@ -1145,7 +1145,10 @@ export default function CodeEditor({
             <>
               <ResizableHandle />
               <ResizablePanel defaultSize={30} minSize={15}>
-                <AIChat />
+              <AIChat 
+                activeFileContent={activeFileContent} 
+                activeFileName={tabs.find(tab => tab.id === activeFileId)?.name || 'No file selected'}
+              />
               </ResizablePanel>
             </>
           )}

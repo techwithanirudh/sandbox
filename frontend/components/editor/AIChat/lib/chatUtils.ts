@@ -63,7 +63,8 @@ export const handleSend = async (
   setIsContextExpanded: React.Dispatch<React.SetStateAction<boolean>>,
   setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>,
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
-  abortControllerRef: React.MutableRefObject<AbortController | null>
+  abortControllerRef: React.MutableRefObject<AbortController | null>,
+  activeFileContent: string
 ) => {
   if (input.trim() === '' && !context) return;
 
@@ -95,6 +96,7 @@ export const handleSend = async (
       body: JSON.stringify({
         messages: anthropicMessages,
         context: context || undefined,
+        activeFileContent: activeFileContent,
       }),
       signal: abortControllerRef.current.signal,
     });

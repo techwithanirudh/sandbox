@@ -21,9 +21,10 @@ export default {
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
-    const body = await request.json() as { messages: unknown; context: unknown };
+    const body = await request.json() as { messages: unknown; context: unknown; activeFileContent: string };
     const messages = body.messages;
     const context = body.context;
+    const activeFileContent = body.activeFileContent;
 
     if (!Array.isArray(messages)) {
       return new Response("Invalid messages format", { status: 400 });
@@ -37,7 +38,8 @@ print("Hello, World!")
 
 Provide a clear and concise explanation along with any code snippets. Keep your response brief and to the point.
 
-${context ? `Context:\n${context}\n` : ''}`;
+${context ? `Context:\n${context}\n` : ''}
+${activeFileContent ? `Active File Content:\n${activeFileContent}\n` : ''}`;
 
     const anthropicMessages = messages.map(msg => ({
       role: msg.role === 'human' ? 'user' : 'assistant',

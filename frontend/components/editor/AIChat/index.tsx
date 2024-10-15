@@ -11,7 +11,7 @@ interface Message {
   context?: string;
 }
 
-export default function AIChat() {
+export default function AIChat({ activeFileContent, activeFileName }: { activeFileContent: string, activeFileName: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -38,7 +38,10 @@ export default function AIChat() {
 
   return (
     <div className="flex flex-col h-screen w-full">
-      <span className="text-muted-foreground/50 font-medium p-2">CHAT</span>
+      <div className="flex justify-between items-center p-2 border-b">
+        <span className="text-muted-foreground/50 font-medium">CHAT</span>
+        <span className="text-muted-foreground/50 font-medium truncate max-w-[50%]" title={activeFileName}>{activeFileName}</span>
+      </div>
       <div ref={chatContainerRef} className="flex-grow overflow-y-auto p-4 space-y-4">
         {messages.map((message, messageIndex) => (
           <ChatMessage 
@@ -61,7 +64,7 @@ export default function AIChat() {
           input={input}
           setInput={setInput}
           isGenerating={isGenerating}
-          handleSend={() => handleSend(input, context, messages, setMessages, setInput, setIsContextExpanded, setIsGenerating, setIsLoading, abortControllerRef)}
+          handleSend={() => handleSend(input, context, messages, setMessages, setInput, setIsContextExpanded, setIsGenerating, setIsLoading, abortControllerRef, activeFileContent)}
           handleStopGeneration={() => handleStopGeneration(abortControllerRef)}
         />
       </div>
