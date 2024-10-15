@@ -1,4 +1,5 @@
 import { Anthropic } from "@anthropic-ai/sdk";
+import { MessageParam } from "@anthropic-ai/sdk/src/resources/messages.js";
 
 export interface Env {
   ANTHROPIC_API_KEY: string;
@@ -17,31 +18,31 @@ export default {
       });
     }
 
-    if (request.method !== "GET") {
+    if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
+    const body = await request.json() as { messages: unknown; context: unknown };
+    const messages = body.messages;
+    const context = body.context;
 
-    const url = new URL(request.url);
-    const instructions = url.searchParams.get("instructions");
-    const context = url.searchParams.get("context");
-
-    if (!instructions) {
-      return new Response("Missing instructions parameter", { status: 400 });
+    if (!Array.isArray(messages)) {
+      return new Response("Invalid messages format", { status: 400 });
     }
 
-    const prompt = `You are an intelligent programming assistant. Please respond to the following request concisely:
-
-${instructions}
-
-${context ? `Context:\n${context}\n` : ''}
-
-If your response includes code, please format it using triple backticks (\`\`\`) with the appropriate language identifier. For example:
+    const systemMessage = `You are an intelligent programming assistant. Please respond to the following request concisely. If your response includes code, please format it using triple backticks (\`\`\`) with the appropriate language identifier. For example:
 
 \`\`\`python
 print("Hello, World!")
 \`\`\`
 
-Provide a clear and concise explanation along with any code snippets. Keep your response brief and to the point`;
+Provide a clear and concise explanation along with any code snippets. Keep your response brief and to the point.
+
+${context ? `Context:\n${context}\n` : ''}`;
+
+    const anthropicMessages = messages.map(msg => ({
+      role: msg.role === 'human' ? 'user' : 'assistant',
+      content: msg.content
+    })) as MessageParam[];
 
     try { 
       const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
@@ -49,7 +50,8 @@ Provide a clear and concise explanation along with any code snippets. Keep your 
       const stream = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20240620",
         max_tokens: 1024,
-        messages: [{ role: "user", content: prompt }],
+        system: systemMessage,
+        messages: anthropicMessages,
         stream: true,
       });
 
