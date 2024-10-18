@@ -88,7 +88,7 @@ export const handleSend = async (
       content: msg.content
     }));
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_AI_WORKER_URL}/api`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
