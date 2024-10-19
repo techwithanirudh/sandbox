@@ -20,12 +20,14 @@ import { TerminalManager } from "./TerminalManager"
 import { User } from "./types"
 import { LockManager } from "./utils"
 
+// Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error)
   // Do not exit the process
   // You can add additional logging or recovery logic here
 })
 
+// Handle unhandled promise rejections
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason)
   // Do not exit the process
@@ -35,8 +37,10 @@ process.on("unhandledRejection", (reason, promise) => {
 // The amount of time in ms that a container will stay alive without a hearbeat.
 const CONTAINER_TIMEOUT = 120_000
 
+// Load environment variables
 dotenv.config()
 
+// Initialize Express app and create HTTP server
 const app: Express = express()
 const port = process.env.PORT || 4000
 app.use(cors())
@@ -47,10 +51,12 @@ const io = new Server(httpServer, {
   },
 })
 
+// Check if the sandbox owner is connected
 function isOwnerConnected(sandboxId: string): boolean {
   return (connections[sandboxId] ?? 0) > 0
 }
 
+// Extract port number from a string
 function extractPortNumber(inputString: string): number | null {
   const cleanedString = inputString.replace(/\x1B\[[0-9;]*m/g, "")
   const regex = /http:\/\/localhost:(\d+)/
@@ -58,12 +64,15 @@ function extractPortNumber(inputString: string): number | null {
   return match ? parseInt(match[1]) : null
 }
 
+// Initialize containers and managers
 const containers: Record<string, Sandbox> = {}
 const connections: Record<string, number> = {}
 const fileManagers: Record<string, FileManager> = {}
 const terminalManagers: Record<string, TerminalManager> = {}
 
+// Middleware for socket authentication
 io.use(async (socket, next) => {
+  // Define the schema for handshake query validation
   const handshakeSchema = z.object({
     userId: z.string(),
     sandboxId: z.string(),
@@ -74,12 +83,14 @@ io.use(async (socket, next) => {
   const q = socket.handshake.query
   const parseQuery = handshakeSchema.safeParse(q)
 
+  // Check if the query is valid according to the schema
   if (!parseQuery.success) {
     next(new Error("Invalid request."))
     return
   }
 
   const { sandboxId, userId } = parseQuery.data
+  // Fetch user data from the database
   const dbUser = await fetch(
     `${process.env.DATABASE_WORKER_URL}/api/user?id=${userId}`,
     {
@@ -90,32 +101,39 @@ io.use(async (socket, next) => {
   )
   const dbUserJSON = (await dbUser.json()) as User
 
+  // Check if user data was retrieved successfully
   if (!dbUserJSON) {
     next(new Error("DB error."))
     return
   }
 
+  // Check if the user owns the sandbox or has shared access
   const sandbox = dbUserJSON.sandbox.find((s) => s.id === sandboxId)
   const sharedSandboxes = dbUserJSON.usersToSandboxes.find(
     (uts) => uts.sandboxId === sandboxId
   )
 
+  // If user doesn't own or have shared access to the sandbox, deny access
   if (!sandbox && !sharedSandboxes) {
     next(new Error("Invalid credentials."))
     return
   }
 
+  // Set socket data with user information
   socket.data = {
     userId,
     sandboxId: sandboxId,
     isOwner: sandbox !== undefined,
   }
 
+  // Allow the connection
   next()
 })
 
+// Initialize lock manager
 const lockManager = new LockManager()
 
+// Check for required environment variables
 if (!process.env.DOKKU_HOST)
   console.error("Environment variable DOKKU_HOST is not defined")
 if (!process.env.DOKKU_USERNAME)
@@ -123,6 +141,7 @@ if (!process.env.DOKKU_USERNAME)
 if (!process.env.DOKKU_KEY)
   console.error("Environment variable DOKKU_KEY is not defined")
 
+// Initialize Dokku client
 const client =
   process.env.DOKKU_HOST && process.env.DOKKU_KEY && process.env.DOKKU_USERNAME
     ? new DokkuClient({
@@ -133,6 +152,7 @@ const client =
     : null
 client?.connect()
 
+// Initialize Git client used to deploy Dokku apps
 const git =
   process.env.DOKKU_HOST && process.env.DOKKU_KEY
     ? new SecureGitClient(
@@ -141,6 +161,7 @@ const git =
       )
     : null
 
+// Handle socket connections
 io.on("connection", async (socket) => {
   try {
     const data = socket.data as {
@@ -149,6 +170,7 @@ io.on("connection", async (socket) => {
       isOwner: boolean
     }
 
+    // Handle connection based on user type (owner or not)
     if (data.isOwner) {
       connections[data.sandboxId] = (connections[data.sandboxId] ?? 0) + 1
     } else {
@@ -158,6 +180,7 @@ io.on("connection", async (socket) => {
       }
     }
 
+    // Create or retrieve container
     const createdContainer = await lockManager.acquireLock(
       data.sandboxId,
       async () => {
@@ -180,10 +203,12 @@ io.on("connection", async (socket) => {
       }
     )
 
+    // Function to send loaded event
     const sendLoadedEvent = (files: SandboxFiles) => {
       socket.emit("loaded", files.files)
     }
 
+    // Initialize file and terminal managers if container was created
     if (createdContainer) {
       fileManagers[data.sandboxId] = new FileManager(
         data.sandboxId,
@@ -203,6 +228,7 @@ io.on("connection", async (socket) => {
     // Load file list from the file manager into the editor
     sendLoadedEvent(fileManager.sandboxFiles)
 
+    // Handle various socket events (heartbeat, file operations, terminal operations, etc.)
     socket.on("heartbeat", async () => {
       try {
         // This keeps the container alive for another CONTAINER_TIMEOUT seconds.
@@ -214,6 +240,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to get file content
     socket.on("getFile", async (fileId: string, callback) => {
       try {
         const fileContent = await fileManager.getFile(fileId)
@@ -224,6 +251,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to get folder contents
     socket.on("getFolder", async (folderId: string, callback) => {
       try {
         const files = await fileManager.getFolder(folderId)
@@ -234,6 +262,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to save file
     socket.on("saveFile", async (fileId: string, body: string) => {
       try {
         await saveFileRL.consume(data.userId, 1)
@@ -244,6 +273,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to move file
     socket.on(
       "moveFile",
       async (fileId: string, folderId: string, callback) => {
@@ -263,6 +293,7 @@ io.on("connection", async (socket) => {
       message?: string
     }
 
+    // Handle request to list apps
     socket.on(
       "list",
       async (callback: (response: CallbackResponse) => void) => {
@@ -283,6 +314,7 @@ io.on("connection", async (socket) => {
       }
     )
 
+    // Handle request to deploy project
     socket.on(
       "deploy",
       async (callback: (response: CallbackResponse) => void) => {
@@ -313,6 +345,7 @@ io.on("connection", async (socket) => {
       }
     )
 
+    // Handle request to create a new file
     socket.on("createFile", async (name: string, callback) => {
       try {
         await createFileRL.consume(data.userId, 1)
@@ -324,6 +357,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to create a new folder
     socket.on("createFolder", async (name: string, callback) => {
       try {
         await createFolderRL.consume(data.userId, 1)
@@ -335,6 +369,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to rename a file
     socket.on("renameFile", async (fileId: string, newName: string) => {
       try {
         await renameFileRL.consume(data.userId, 1)
@@ -345,6 +380,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to delete a file
     socket.on("deleteFile", async (fileId: string, callback) => {
       try {
         await deleteFileRL.consume(data.userId, 1)
@@ -356,6 +392,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to delete a folder
     socket.on("deleteFolder", async (folderId: string, callback) => {
       try {
         const newFiles = await fileManager.deleteFolder(folderId)
@@ -366,6 +403,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to create a new terminal
     socket.on("createTerminal", async (id: string, callback) => {
       try {
         await lockManager.acquireLock(data.sandboxId, async () => {
@@ -387,6 +425,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to resize terminal
     socket.on(
       "resizeTerminal",
       (dimensions: { cols: number; rows: number }) => {
@@ -399,6 +438,7 @@ io.on("connection", async (socket) => {
       }
     )
 
+    // Handle terminal input data
     socket.on("terminalData", async (id: string, data: string) => {
       try {
         await terminalManager.sendTerminalData(id, data)
@@ -408,6 +448,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to close terminal
     socket.on("closeTerminal", async (id: string, callback) => {
       try {
         await terminalManager.closeTerminal(id)
@@ -418,6 +459,7 @@ io.on("connection", async (socket) => {
       }
     })
 
+    // Handle request to generate code
     socket.on(
       "generateCode",
       async (
@@ -442,7 +484,7 @@ io.on("connection", async (socket) => {
             }
           )
 
-          // Generate code from cloudflare workers AI
+          // Generate code from Cloudflare Workers AI
           const generateCodePromise = fetch(
             `${process.env.AI_WORKER_URL}/api?fileName=${encodeURIComponent(
               fileName
@@ -472,6 +514,7 @@ io.on("connection", async (socket) => {
       }
     )
 
+    // Handle socket disconnection
     socket.on("disconnect", async () => {
       try {
         if (data.isOwner) {
@@ -498,6 +541,7 @@ io.on("connection", async (socket) => {
   }
 })
 
+// Start the server
 httpServer.listen(port, () => {
   console.log(`Server running on port ${port}`)
 })

@@ -12,11 +12,13 @@ import {
 import { MAX_BODY_SIZE } from "./ratelimit"
 import { TFile, TFileData, TFolder } from "./types"
 
+// Define the structure for sandbox files
 export type SandboxFiles = {
   files: (TFolder | TFile)[]
   fileData: TFileData[]
 }
 
+// FileManager class to handle file operations in a sandbox
 export class FileManager {
   private sandboxId: string
   private sandbox: Sandbox
@@ -25,6 +27,7 @@ export class FileManager {
   private dirName = "/home/user"
   private refreshFileList: (files: SandboxFiles) => void
 
+  // Constructor to initialize the FileManager
   constructor(
     sandboxId: string,
     sandbox: Sandbox,
@@ -36,6 +39,7 @@ export class FileManager {
     this.refreshFileList = refreshFileList
   }
 
+  // Initialize the FileManager
   async initialize() {
     this.sandboxFiles = await getSandboxFiles(this.sandboxId)
     const projectDirectory = path.posix.join(
@@ -94,6 +98,7 @@ export class FileManager {
     }
   }
 
+  // Watch a directory for changes
   async watchDirectory(directory: string): Promise<WatchHandle | undefined> {
     try {
       const handle = await this.sandbox.files.watch(
@@ -130,7 +135,7 @@ export class FileManager {
               )
             }
 
-            // A new file or directory was created.
+            // Handle file/directory creation event
             if (event.type === "create") {
               const folder = findFolderById(
                 this.sandboxFiles.files,
@@ -140,16 +145,16 @@ export class FileManager {
 
               const newItem = isDir
                 ? ({
-                    id: sandboxFilePath,
-                    name: event.name,
-                    type: "folder",
-                    children: [],
-                  } as TFolder)
+                  id: sandboxFilePath,
+                  name: event.name,
+                  type: "folder",
+                  children: [],
+                } as TFolder)
                 : ({
-                    id: sandboxFilePath,
-                    name: event.name,
-                    type: "file",
-                  } as TFile)
+                  id: sandboxFilePath,
+                  name: event.name,
+                  type: "file",
+                } as TFile)
 
               if (folder) {
                 // If the folder exists, add the new item (file/folder) as a child
@@ -174,7 +179,7 @@ export class FileManager {
               console.log(`Create ${sandboxFilePath}`)
             }
 
-            // A file or directory was removed or renamed.
+            // Handle file/directory removal or rename event
             else if (event.type === "remove" || event.type == "rename") {
               const folder = findFolderById(
                 this.sandboxFiles.files,
@@ -206,7 +211,7 @@ export class FileManager {
               console.log(`Removed: ${sandboxFilePath}`)
             }
 
-            // The contents of a file were changed.
+            // Handle file write event
             else if (event.type === "write") {
               const folder = findFolderById(
                 this.sandboxFiles.files,
@@ -259,6 +264,7 @@ export class FileManager {
     }
   }
 
+  // Watch subdirectories recursively
   async watchSubdirectories(directory: string) {
     const dirContent = await this.sandbox.files.list(directory)
     await Promise.all(
@@ -271,15 +277,18 @@ export class FileManager {
     )
   }
 
+  // Get file content
   async getFile(fileId: string): Promise<string | undefined> {
     const file = this.sandboxFiles.fileData.find((f) => f.id === fileId)
     return file?.data
   }
 
+  // Get folder content
   async getFolder(folderId: string): Promise<string[]> {
     return getFolder(folderId)
   }
 
+  // Save file content
   async saveFile(fileId: string, body: string): Promise<void> {
     if (!fileId) return // handles saving when no file is open
 
@@ -295,6 +304,7 @@ export class FileManager {
     this.fixPermissions()
   }
 
+  // Move a file to a different folder
   async moveFile(
     fileId: string,
     folderId: string
@@ -318,6 +328,7 @@ export class FileManager {
     return newFiles.files
   }
 
+  // Move a file within the container
   private async moveFileInContainer(oldPath: string, newPath: string) {
     try {
       const fileContents = await this.sandbox.files.read(
@@ -333,6 +344,7 @@ export class FileManager {
     }
   }
 
+  // Create a new file
   async createFile(name: string): Promise<boolean> {
     const size: number = await getProjectSize(this.sandboxId)
     if (size > 200 * 1024 * 1024) {
@@ -360,11 +372,13 @@ export class FileManager {
     return true
   }
 
+  // Create a new folder
   async createFolder(name: string): Promise<void> {
     const id = `projects/${this.sandboxId}/${name}`
     await this.sandbox.files.makeDir(path.posix.join(this.dirName, id))
   }
 
+  // Rename a file
   async renameFile(fileId: string, newName: string): Promise<void> {
     const fileData = this.sandboxFiles.fileData.find((f) => f.id === fileId)
     const file = this.sandboxFiles.files.find((f) => f.id === fileId)
@@ -381,6 +395,7 @@ export class FileManager {
     file.id = newFileId
   }
 
+  // Delete a file
   async deleteFile(fileId: string): Promise<(TFolder | TFile)[]> {
     const file = this.sandboxFiles.fileData.find((f) => f.id === fileId)
     if (!file) return this.sandboxFiles.files
@@ -396,6 +411,7 @@ export class FileManager {
     return newFiles.files
   }
 
+  // Delete a folder
   async deleteFolder(folderId: string): Promise<(TFolder | TFile)[]> {
     const files = await getFolder(folderId)
 
@@ -413,6 +429,7 @@ export class FileManager {
     return newFiles.files
   }
 
+  // Close all file watchers
   async closeWatchers() {
     await Promise.all(
       this.fileWatchers.map(async (handle: WatchHandle) => {
