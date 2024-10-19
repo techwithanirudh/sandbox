@@ -72,7 +72,6 @@ let isOwnerConnected = false
 
 const containers: Record<string, Sandbox> = {}
 const connections: Record<string, number> = {}
-const terminals: Record<string, Terminal> = {}
 
 const dirName = "/home/user"
 
@@ -209,6 +208,8 @@ io.on("connection", async (socket) => {
         }
       }
     )
+
+    const terminals: Record<string, Terminal> = {}
 
     const sandboxFiles = await getSandboxFiles(data.sandboxId)
     const projectDirectory = path.posix.join(
@@ -928,6 +929,14 @@ io.on("connection", async (socket) => {
         if (data.isOwner) {
           connections[data.sandboxId]--
         }
+
+        // Close all terminals for this connection
+        await Promise.all(
+          Object.entries(terminals).map(async ([key, terminal]) => {
+            await terminal.close()
+            delete terminals[key]
+          })
+        )
 
         // Stop watching file changes in the container
         Promise.all(
