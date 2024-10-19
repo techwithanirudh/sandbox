@@ -6,6 +6,7 @@ import fs from "fs"
 import { createServer } from "http"
 import { Server } from "socket.io"
 import { z } from "zod"
+import { AIWorker } from "./AIWorker"
 import { DokkuClient } from "./DokkuClient"
 import { FileManager, SandboxFiles } from "./FileManager"
 import {
@@ -160,6 +161,14 @@ const git =
         process.env.DOKKU_KEY
       )
     : null
+
+// Add this near the top of the file, after other initializations
+const aiWorker = new AIWorker(
+  process.env.AI_WORKER_URL!,
+  process.env.CF_AI_KEY!,
+  process.env.DATABASE_WORKER_URL!,
+  process.env.WORKERS_KEY!
+)
 
 // Handle socket connections
 io.on("connection", async (socket) => {
@@ -470,43 +479,14 @@ io.on("connection", async (socket) => {
         callback
       ) => {
         try {
-          const fetchPromise = fetch(
-            `${process.env.DATABASE_WORKER_URL}/api/sandbox/generate`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `${process.env.WORKERS_KEY}`,
-              },
-              body: JSON.stringify({
-                userId: data.userId,
-              }),
-            }
+          const result = await aiWorker.generateCode(
+            data.userId,
+            fileName,
+            code,
+            line,
+            instructions
           )
-
-          // Generate code from Cloudflare Workers AI
-          const generateCodePromise = fetch(
-            `${process.env.AI_WORKER_URL}/api?fileName=${encodeURIComponent(
-              fileName
-            )}&code=${encodeURIComponent(code)}&line=${encodeURIComponent(
-              line
-            )}&instructions=${encodeURIComponent(instructions)}`,
-            {
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `${process.env.CF_AI_KEY}`,
-              },
-            }
-          )
-
-          const [fetchResponse, generateCodeResponse] = await Promise.all([
-            fetchPromise,
-            generateCodePromise,
-          ])
-
-          const json = await generateCodeResponse.json()
-
-          callback({ response: json.response, success: true })
+          callback(result)
         } catch (e: any) {
           console.error("Error generating code:", e)
           io.emit("error", `Error: code generation. ${e.message ?? e}`)
