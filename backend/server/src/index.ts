@@ -53,7 +53,7 @@ process.on("unhandledRejection", (reason, promise) => {
 })
 
 // The amount of time in ms that a container will stay alive without a hearbeat.
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 dotenv.config()
 
