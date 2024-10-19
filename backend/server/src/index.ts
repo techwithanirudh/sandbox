@@ -226,7 +226,6 @@ io.on("connection", async (socket) => {
       )
       await fileManagers[data.sandboxId].initialize()
       terminalManagers[data.sandboxId] = new TerminalManager(
-        data.sandboxId,
         containers[data.sandboxId]
       )
     }

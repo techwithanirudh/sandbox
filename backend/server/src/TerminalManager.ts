@@ -1,14 +1,11 @@
 import { Sandbox } from "e2b"
-import path from "path"
 import { Terminal } from "./Terminal"
 
 export class TerminalManager {
-  private sandboxId: string
   private sandbox: Sandbox
   private terminals: Record<string, Terminal> = {}
 
-  constructor(sandboxId: string, sandbox: Sandbox) {
-    this.sandboxId = sandboxId
+  constructor(sandbox: Sandbox) {
     this.sandbox = sandbox
   }
 
@@ -27,11 +24,7 @@ export class TerminalManager {
       rows: 20,
     })
 
-    const defaultDirectory = path.posix.join(
-      "/home/user",
-      "projects",
-      this.sandboxId
-    )
+    const defaultDirectory = "/home/user/project"
     const defaultCommands = [
       `cd "${defaultDirectory}"`,
       "export PS1='user> '",

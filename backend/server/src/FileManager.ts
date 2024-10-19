@@ -34,13 +34,12 @@ const processFiles = async (paths: string[], id: string) => {
         }
       } else {
         if (isFile) {
-          const file: TFile = { id: path, type: "file", name: part }
+          const file: TFile = { id: `/${parts.join("/")}`, type: "file", name: part }
           current.children.push(file)
-          fileData.push({ id: path, data: "" })
+          fileData.push({ id: `/${parts.join("/")}`, data: "" })
         } else {
           const folder: TFolder = {
-            // id: path, // todo: wrong id. for example, folder "src" ID is: projects/a7vgttfqbgy403ratp7du3ln/src/App.css
-            id: `projects/${id}/${parts.slice(0, i + 1).join("/")}`,
+            id: `/${parts.slice(0, i + 1).join("/")}`,
             type: "folder",
             name: part,
             children: [],
@@ -54,7 +53,7 @@ const processFiles = async (paths: string[], id: string) => {
 
   await Promise.all(
     fileData.map(async (file) => {
-      const data = await RemoteFileStorage.fetchFileContent(file.id)
+      const data = await RemoteFileStorage.fetchFileContent(`projects/${id}${file.id}`)
       file.data = data
     })
   )
@@ -75,7 +74,7 @@ export class FileManager {
   private sandbox: Sandbox
   public sandboxFiles: SandboxFiles
   private fileWatchers: WatchHandle[] = []
-  private dirName = "/home/user"
+  private dirName = "/home/user/project"
   private refreshFileList: (files: SandboxFiles) => void
 
   // Constructor to initialize the FileManager
@@ -90,14 +89,14 @@ export class FileManager {
     this.refreshFileList = refreshFileList
   }
 
+  private getRemoteFileId(localId: string): string {
+    return `projects/${this.sandboxId}${localId}`
+  }
+
   // Initialize the FileManager
   async initialize() {
     this.sandboxFiles = await getSandboxFiles(this.sandboxId)
-    const projectDirectory = path.posix.join(
-      this.dirName,
-      "projects",
-      this.sandboxId
-    )
+    const projectDirectory = this.dirName
     // Copy all files from the project to the container
     const promises = this.sandboxFiles.fileData.map(async (file) => {
       try {
@@ -136,13 +135,8 @@ export class FileManager {
   // Change the owner of the project directory to user
   private async fixPermissions() {
     try {
-      const projectDirectory = path.posix.join(
-        this.dirName,
-        "projects",
-        this.sandboxId
-      )
       await this.sandbox.commands.run(
-        `sudo chown -R user "${projectDirectory}"`
+        `sudo chown -R user "${this.dirName}"`
       )
     } catch (e: any) {
       console.log("Failed to fix permissions: " + e)
@@ -164,16 +158,10 @@ export class FileManager {
 
             // This is the absolute file path in the container
             const containerFilePath = path.posix.join(directory, event.name)
-            // This is the file path relative to the home directory
-            const sandboxFilePath = removeDirName(
-              containerFilePath,
-              this.dirName + "/"
-            )
-            // This is the directory being watched relative to the home directory
-            const sandboxDirectory = removeDirName(
-              directory,
-              this.dirName + "/"
-            )
+            // This is the file path relative to the project directory
+            const sandboxFilePath = removeDirName(containerFilePath, this.dirName)
+            // This is the directory being watched relative to the project directory
+            const sandboxDirectory = removeDirName(directory, this.dirName)
 
             // Helper function to find a folder by id
             function findFolderById(
@@ -336,7 +324,7 @@ export class FileManager {
 
   // Get folder content
   async getFolder(folderId: string): Promise<string[]> {
-    return RemoteFileStorage.getFolder(folderId)
+    return RemoteFileStorage.getFolder(this.getRemoteFileId(folderId))
   }
 
   // Save file content
@@ -346,7 +334,7 @@ export class FileManager {
     if (Buffer.byteLength(body, "utf-8") > MAX_BODY_SIZE) {
       throw new Error("File size too large. Please reduce the file size.")
     }
-    await RemoteFileStorage.saveFile(fileId, body)
+    await RemoteFileStorage.saveFile(this.getRemoteFileId(fileId), body)
     const file = this.sandboxFiles.fileData.find((f) => f.id === fileId)
     if (!file) return
     file.data = body
@@ -374,7 +362,7 @@ export class FileManager {
     fileData.id = newFileId
     file.id = newFileId
 
-    await RemoteFileStorage.renameFile(fileId, newFileId, fileData.data)
+    await RemoteFileStorage.renameFile(this.getRemoteFileId(fileId), this.getRemoteFileId(newFileId), fileData.data)
     const newFiles = await getSandboxFiles(this.sandboxId)
     return newFiles.files
   }
@@ -402,7 +390,7 @@ export class FileManager {
       throw new Error("Project size exceeded. Please delete some files.")
     }
 
-    const id = `projects/${this.sandboxId}/${name}`
+    const id = `/${name}`
 
     await this.sandbox.files.write(path.posix.join(this.dirName, id), "")
     await this.fixPermissions()
@@ -418,14 +406,14 @@ export class FileManager {
       data: "",
     })
 
-    await RemoteFileStorage.createFile(id)
+    await RemoteFileStorage.createFile(this.getRemoteFileId(id))
 
     return true
   }
 
   // Create a new folder
   async createFolder(name: string): Promise<void> {
-    const id = `projects/${this.sandboxId}/${name}`
+    const id = `/${name}`
     await this.sandbox.files.makeDir(path.posix.join(this.dirName, id))
   }
 
@@ -440,7 +428,7 @@ export class FileManager {
 
     await this.moveFileInContainer(fileId, newFileId)
     await this.fixPermissions()
-    await RemoteFileStorage.renameFile(fileId, newFileId, fileData.data)
+    await RemoteFileStorage.renameFile(this.getRemoteFileId(fileId), this.getRemoteFileId(newFileId), fileData.data)
 
     fileData.id = newFileId
     file.id = newFileId
@@ -456,7 +444,7 @@ export class FileManager {
       (f) => f.id !== fileId
     )
 
-    await RemoteFileStorage.deleteFile(fileId)
+    await RemoteFileStorage.deleteFile(this.getRemoteFileId(fileId))
 
     const newFiles = await getSandboxFiles(this.sandboxId)
     return newFiles.files
@@ -464,7 +452,7 @@ export class FileManager {
 
   // Delete a folder
   async deleteFolder(folderId: string): Promise<(TFolder | TFile)[]> {
-    const files = await RemoteFileStorage.getFolder(folderId)
+    const files = await RemoteFileStorage.getFolder(this.getRemoteFileId(folderId))
 
     await Promise.all(
       files.map(async (file) => {
@@ -472,7 +460,7 @@ export class FileManager {
         this.sandboxFiles.fileData = this.sandboxFiles.fileData.filter(
           (f) => f.id !== file
         )
-        await RemoteFileStorage.deleteFile(file)
+        await RemoteFileStorage.deleteFile(this.getRemoteFileId(file))
       })
     )
 
