@@ -1,44 +1,24 @@
 import cors from "cors"
 import dotenv from "dotenv"
+import { Sandbox } from "e2b"
 import express, { Express } from "express"
 import fs from "fs"
 import { createServer } from "http"
-import path from "path"
 import { Server } from "socket.io"
-import { DokkuClient } from "./DokkuClient"
-import { SecureGitClient } from "./SecureGitClient"
-
 import { z } from "zod"
+import { DokkuClient } from "./DokkuClient"
+import { FileManager, SandboxFiles } from "./FileManager"
 import {
-  createFile,
-  deleteFile,
-  getFolder,
-  getProjectSize,
-  getSandboxFiles,
-  renameFile,
-  saveFile,
-} from "./fileoperations"
-import { TFile, TFileData, TFolder, User } from "./types"
-import { LockManager } from "./utils"
-
-import {
-  EntryInfo,
-  Filesystem,
-  FilesystemEvent,
-  Sandbox,
-  WatchHandle,
-} from "e2b"
-
-import { Terminal } from "./Terminal"
-
-import {
-  MAX_BODY_SIZE,
   createFileRL,
   createFolderRL,
   deleteFileRL,
   renameFileRL,
   saveFileRL,
 } from "./ratelimit"
+import { SecureGitClient } from "./SecureGitClient"
+import { TerminalManager } from "./TerminalManager"
+import { User } from "./types"
+import { LockManager } from "./utils"
 
 process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error)
@@ -67,27 +47,21 @@ const io = new Server(httpServer, {
   },
 })
 
-let inactivityTimeout: NodeJS.Timeout | null = null
-let isOwnerConnected = false
+function isOwnerConnected(sandboxId: string): boolean {
+  return (connections[sandboxId] ?? 0) > 0
+}
+
+function extractPortNumber(inputString: string): number | null {
+  const cleanedString = inputString.replace(/\x1B\[[0-9;]*m/g, "")
+  const regex = /http:\/\/localhost:(\d+)/
+  const match = cleanedString.match(regex)
+  return match ? parseInt(match[1]) : null
+}
 
 const containers: Record<string, Sandbox> = {}
 const connections: Record<string, number> = {}
-
-const dirName = "/home/user"
-
-const moveFile = async (
-  filesystem: Filesystem,
-  filePath: string,
-  newFilePath: string
-) => {
-  try {
-    const fileContents = await filesystem.read(filePath)
-    await filesystem.write(newFilePath, fileContents)
-    await filesystem.remove(filePath)
-  } catch (e) {
-    console.error(`Error moving file from ${filePath} to ${newFilePath}:`, e)
-  }
-}
+const fileManagers: Record<string, FileManager> = {}
+const terminalManagers: Record<string, TerminalManager> = {}
 
 io.use(async (socket, next) => {
   const handshakeSchema = z.object({
@@ -169,8 +143,6 @@ const git =
 
 io.on("connection", async (socket) => {
   try {
-    if (inactivityTimeout) clearTimeout(inactivityTimeout)
-
     const data = socket.data as {
       userId: string
       sandboxId: string
@@ -178,10 +150,9 @@ io.on("connection", async (socket) => {
     }
 
     if (data.isOwner) {
-      isOwnerConnected = true
       connections[data.sandboxId] = (connections[data.sandboxId] ?? 0) + 1
     } else {
-      if (!isOwnerConnected) {
+      if (!isOwnerConnected(data.sandboxId)) {
         socket.emit("disableAccess", "The sandbox owner is not connected.")
         return
       }
@@ -209,245 +180,28 @@ io.on("connection", async (socket) => {
       }
     )
 
-    const terminals: Record<string, Terminal> = {}
-
-    const sandboxFiles = await getSandboxFiles(data.sandboxId)
-    const projectDirectory = path.posix.join(
-      dirName,
-      "projects",
-      data.sandboxId
-    )
-    const containerFiles = containers[data.sandboxId].files
-    const fileWatchers: WatchHandle[] = []
-
-    // Change the owner of the project directory to user
-    const fixPermissions = async (projectDirectory: string) => {
-      try {
-        await containers[data.sandboxId].commands.run(
-          `sudo chown -R user "${projectDirectory}"`
-        )
-      } catch (e: any) {
-        console.log("Failed to fix permissions: " + e)
-      }
+    const sendLoadedEvent = (files: SandboxFiles) => {
+      socket.emit("loaded", files.files)
     }
 
-    // Check if the given path is a directory
-    const isDirectory = async (projectDirectory: string): Promise<boolean> => {
-      try {
-        const result = await containers[data.sandboxId].commands.run(
-          `[ -d "${projectDirectory}" ] && echo "true" || echo "false"`
-        )
-        return result.stdout.trim() === "true"
-      } catch (e: any) {
-        console.log("Failed to check if directory: " + e)
-        return false
-      }
-    }
-
-    // Only continue to container setup if a new container was created
     if (createdContainer) {
-      // Copy all files from the project to the container
-      const promises = sandboxFiles.fileData.map(async (file) => {
-        try {
-          const filePath = path.posix.join(dirName, file.id)
-          const parentDirectory = path.dirname(filePath)
-          if (!containerFiles.exists(parentDirectory)) {
-            await containerFiles.makeDir(parentDirectory)
-          }
-          await containerFiles.write(filePath, file.data)
-        } catch (e: any) {
-          console.log("Failed to create file: " + e)
-        }
-      })
-      await Promise.all(promises)
-
-      // Make the logged in user the owner of all project files
-      fixPermissions(projectDirectory)
+      fileManagers[data.sandboxId] = new FileManager(
+        data.sandboxId,
+        containers[data.sandboxId],
+        sendLoadedEvent
+      )
+      await fileManagers[data.sandboxId].initialize()
+      terminalManagers[data.sandboxId] = new TerminalManager(
+        data.sandboxId,
+        containers[data.sandboxId]
+      )
     }
 
-    // Start filesystem watcher for the project directory
-    const watchDirectory = async (
-      directory: string
-    ): Promise<WatchHandle | undefined> => {
-      try {
-        return await containerFiles.watch(
-          directory,
-          async (event: FilesystemEvent) => {
-            try {
-              function removeDirName(path: string, dirName: string) {
-                return path.startsWith(dirName)
-                  ? path.slice(dirName.length)
-                  : path
-              }
+    const fileManager = fileManagers[data.sandboxId]
+    const terminalManager = terminalManagers[data.sandboxId]
 
-              // This is the absolute file path in the container
-              const containerFilePath = path.posix.join(directory, event.name)
-              // This is the file path relative to the home directory
-              const sandboxFilePath = removeDirName(
-                containerFilePath,
-                dirName + "/"
-              )
-              // This is the directory being watched relative to the home directory
-              const sandboxDirectory = removeDirName(directory, dirName + "/")
-
-              // Helper function to find a folder by id
-              function findFolderById(
-                files: (TFolder | TFile)[],
-                folderId: string
-              ) {
-                return files.find(
-                  (file: TFolder | TFile) =>
-                    file.type === "folder" && file.id === folderId
-                )
-              }
-
-              // A new file or directory was created.
-              if (event.type === "create") {
-                const folder = findFolderById(
-                  sandboxFiles.files,
-                  sandboxDirectory
-                ) as TFolder
-                const isDir = await isDirectory(containerFilePath)
-
-                const newItem = isDir
-                  ? ({
-                      id: sandboxFilePath,
-                      name: event.name,
-                      type: "folder",
-                      children: [],
-                    } as TFolder)
-                  : ({
-                      id: sandboxFilePath,
-                      name: event.name,
-                      type: "file",
-                    } as TFile)
-
-                if (folder) {
-                  // If the folder exists, add the new item (file/folder) as a child
-                  folder.children.push(newItem)
-                } else {
-                  // If folder doesn't exist, add the new item to the root
-                  sandboxFiles.files.push(newItem)
-                }
-
-                if (!isDir) {
-                  const fileData = await containers[data.sandboxId].files.read(
-                    containerFilePath
-                  )
-                  const fileContents =
-                    typeof fileData === "string" ? fileData : ""
-                  sandboxFiles.fileData.push({
-                    id: sandboxFilePath,
-                    data: fileContents,
-                  })
-                }
-
-                console.log(`Create ${sandboxFilePath}`)
-              }
-
-              // A file or directory was removed or renamed.
-              else if (event.type === "remove" || event.type == "rename") {
-                const folder = findFolderById(
-                  sandboxFiles.files,
-                  sandboxDirectory
-                ) as TFolder
-                const isDir = await isDirectory(containerFilePath)
-
-                const isFileMatch = (file: TFolder | TFile | TFileData) =>
-                  file.id === sandboxFilePath ||
-                  file.id.startsWith(containerFilePath + "/")
-
-                if (folder) {
-                  // Remove item from its parent folder
-                  folder.children = folder.children.filter(
-                    (file: TFolder | TFile) => !isFileMatch(file)
-                  )
-                } else {
-                  // Remove from the root if it's not inside a folder
-                  sandboxFiles.files = sandboxFiles.files.filter(
-                    (file: TFolder | TFile) => !isFileMatch(file)
-                  )
-                }
-
-                // Also remove any corresponding file data
-                sandboxFiles.fileData = sandboxFiles.fileData.filter(
-                  (file: TFileData) => !isFileMatch(file)
-                )
-
-                console.log(`Removed: ${sandboxFilePath}`)
-              }
-
-              // The contents of a file were changed.
-              else if (event.type === "write") {
-                const folder = findFolderById(
-                  sandboxFiles.files,
-                  sandboxDirectory
-                ) as TFolder
-                const fileToWrite = sandboxFiles.fileData.find(
-                  (file) => file.id === sandboxFilePath
-                )
-
-                if (fileToWrite) {
-                  fileToWrite.data = await containers[
-                    data.sandboxId
-                  ].files.read(containerFilePath)
-                  console.log(`Write to ${sandboxFilePath}`)
-                } else {
-                  // If the file is part of a folder structure, locate it and update its data
-                  const fileInFolder = folder?.children.find(
-                    (file) => file.id === sandboxFilePath
-                  )
-                  if (fileInFolder) {
-                    const fileData = await containers[
-                      data.sandboxId
-                    ].files.read(containerFilePath)
-                    const fileContents =
-                      typeof fileData === "string" ? fileData : ""
-                    sandboxFiles.fileData.push({
-                      id: sandboxFilePath,
-                      data: fileContents,
-                    })
-                    console.log(`Write to ${sandboxFilePath}`)
-                  }
-                }
-              }
-
-              // Tell the client to reload the file list
-              socket.emit("loaded", sandboxFiles.files)
-            } catch (error) {
-              console.error(
-                `Error handling ${event.type} event for ${event.name}:`,
-                error
-              )
-            }
-          },
-          { timeout: 0 }
-        )
-      } catch (error) {
-        console.error(`Error watching filesystem:`, error)
-      }
-    }
-
-    // Watch the project directory
-    const handle = await watchDirectory(projectDirectory)
-    // Keep track of watch handlers to close later
-    if (handle) fileWatchers.push(handle)
-
-    // Watch all subdirectories of the project directory, but not deeper
-    // This also means directories created after the container is created won't be watched
-    const dirContent = await containerFiles.list(projectDirectory)
-    await Promise.all(
-      dirContent.map(async (item: EntryInfo) => {
-        if (item.type === "dir") {
-          console.log("Watching " + item.path)
-          // Keep track of watch handlers to close later
-          const handle = await watchDirectory(item.path)
-          if (handle) fileWatchers.push(handle)
-        }
-      })
-    )
-
-    socket.emit("loaded", sandboxFiles.files)
+    // Load file list from the file manager into the editor
+    sendLoadedEvent(fileManager.sandboxFiles)
 
     socket.on("heartbeat", async () => {
       try {
@@ -460,13 +214,10 @@ io.on("connection", async (socket) => {
       }
     })
 
-    socket.on("getFile", (fileId: string, callback) => {
-      console.log(fileId)
+    socket.on("getFile", async (fileId: string, callback) => {
       try {
-        const file = sandboxFiles.fileData.find((f) => f.id === fileId)
-        if (!file) return
-
-        callback(file.data)
+        const fileContent = await fileManager.getFile(fileId)
+        callback(fileContent)
       } catch (e: any) {
         console.error("Error getting file:", e)
         io.emit("error", `Error: get file. ${e.message ?? e}`)
@@ -475,7 +226,7 @@ io.on("connection", async (socket) => {
 
     socket.on("getFolder", async (folderId: string, callback) => {
       try {
-        const files = await getFolder(folderId)
+        const files = await fileManager.getFolder(folderId)
         callback(files)
       } catch (e: any) {
         console.error("Error getting folder:", e)
@@ -483,35 +234,10 @@ io.on("connection", async (socket) => {
       }
     })
 
-    // todo: send diffs + debounce for efficiency
     socket.on("saveFile", async (fileId: string, body: string) => {
-      if (!fileId) return // handles saving when no file is open
-
       try {
-        if (Buffer.byteLength(body, "utf-8") > MAX_BODY_SIZE) {
-          socket.emit(
-            "error",
-            "Error: file size too large. Please reduce the file size."
-          )
-          return
-        }
-        try {
-          await saveFileRL.consume(data.userId, 1)
-          await saveFile(fileId, body)
-        } catch (e) {
-          io.emit("error", "Rate limited: file saving. Please slow down.")
-          return
-        }
-
-        const file = sandboxFiles.fileData.find((f) => f.id === fileId)
-        if (!file) return
-        file.data = body
-
-        await containers[data.sandboxId].files.write(
-          path.posix.join(dirName, file.id),
-          body
-        )
-        fixPermissions(projectDirectory)
+        await saveFileRL.consume(data.userId, 1)
+        await fileManager.saveFile(fileId, body)
       } catch (e: any) {
         console.error("Error saving file:", e)
         io.emit("error", `Error: file saving. ${e.message ?? e}`)
@@ -522,24 +248,8 @@ io.on("connection", async (socket) => {
       "moveFile",
       async (fileId: string, folderId: string, callback) => {
         try {
-          const file = sandboxFiles.fileData.find((f) => f.id === fileId)
-          if (!file) return
-
-          const parts = fileId.split("/")
-          const newFileId = folderId + "/" + parts.pop()
-
-          await moveFile(
-            containers[data.sandboxId].files,
-            path.posix.join(dirName, fileId),
-            path.posix.join(dirName, newFileId)
-          )
-          fixPermissions(projectDirectory)
-
-          file.id = newFileId
-
-          await renameFile(fileId, newFileId, file.data)
-          const newFiles = await getSandboxFiles(data.sandboxId)
-          callback(newFiles.files)
+          const newFiles = await fileManager.moveFile(fileId, folderId)
+          callback(newFiles)
         } catch (e: any) {
           console.error("Error moving file:", e)
           io.emit("error", `Error: file moving. ${e.message ?? e}`)
@@ -581,12 +291,14 @@ io.on("connection", async (socket) => {
           console.log("Deploying project ${data.sandboxId}...")
           if (!git) throw Error("Failed to retrieve apps list: No git client")
           // Remove the /project/[id]/ component of each file path:
-          const fixedFilePaths = sandboxFiles.fileData.map((file) => {
-            return {
-              ...file,
-              id: file.id.split("/").slice(2).join("/"),
+          const fixedFilePaths = fileManager.sandboxFiles.fileData.map(
+            (file) => {
+              return {
+                ...file,
+                id: file.id.split("/").slice(2).join("/"),
+              }
             }
-          })
+          )
           // Push all files to Dokku.
           await git.pushFiles(fixedFilePaths, data.sandboxId)
           callback({
@@ -603,46 +315,9 @@ io.on("connection", async (socket) => {
 
     socket.on("createFile", async (name: string, callback) => {
       try {
-        const size: number = await getProjectSize(data.sandboxId)
-        // limit is 200mb
-        if (size > 200 * 1024 * 1024) {
-          io.emit(
-            "error",
-            "Rate limited: project size exceeded. Please delete some files."
-          )
-          callback({ success: false })
-          return
-        }
-
-        try {
-          await createFileRL.consume(data.userId, 1)
-        } catch (e) {
-          io.emit("error", "Rate limited: file creation. Please slow down.")
-          return
-        }
-
-        const id = `projects/${data.sandboxId}/${name}`
-
-        await containers[data.sandboxId].files.write(
-          path.posix.join(dirName, id),
-          ""
-        )
-        fixPermissions(projectDirectory)
-
-        sandboxFiles.files.push({
-          id,
-          name,
-          type: "file",
-        })
-
-        sandboxFiles.fileData.push({
-          id,
-          data: "",
-        })
-
-        await createFile(id)
-
-        callback({ success: true })
+        await createFileRL.consume(data.userId, 1)
+        const success = await fileManager.createFile(name)
+        callback({ success })
       } catch (e: any) {
         console.error("Error creating file:", e)
         io.emit("error", `Error: file creation. ${e.message ?? e}`)
@@ -651,19 +326,8 @@ io.on("connection", async (socket) => {
 
     socket.on("createFolder", async (name: string, callback) => {
       try {
-        try {
-          await createFolderRL.consume(data.userId, 1)
-        } catch (e) {
-          io.emit("error", "Rate limited: folder creation. Please slow down.")
-          return
-        }
-
-        const id = `projects/${data.sandboxId}/${name}`
-
-        await containers[data.sandboxId].files.makeDir(
-          path.posix.join(dirName, id)
-        )
-
+        await createFolderRL.consume(data.userId, 1)
+        await fileManager.createFolder(name)
         callback()
       } catch (e: any) {
         console.error("Error creating folder:", e)
@@ -673,87 +337,29 @@ io.on("connection", async (socket) => {
 
     socket.on("renameFile", async (fileId: string, newName: string) => {
       try {
-        try {
-          await renameFileRL.consume(data.userId, 1)
-        } catch (e) {
-          io.emit("error", "Rate limited: file renaming. Please slow down.")
-          return
-        }
-
-        const file = sandboxFiles.fileData.find((f) => f.id === fileId)
-        if (!file) return
-        file.id = newName
-
-        const parts = fileId.split("/")
-        const newFileId =
-          parts.slice(0, parts.length - 1).join("/") + "/" + newName
-
-        await moveFile(
-          containers[data.sandboxId].files,
-          path.posix.join(dirName, fileId),
-          path.posix.join(dirName, newFileId)
-        )
-        fixPermissions(projectDirectory)
-        await renameFile(fileId, newFileId, file.data)
+        await renameFileRL.consume(data.userId, 1)
+        await fileManager.renameFile(fileId, newName)
       } catch (e: any) {
-        console.error("Error renaming folder:", e)
-        io.emit("error", `Error: folder renaming. ${e.message ?? e}`)
+        console.error("Error renaming file:", e)
+        io.emit("error", `Error: file renaming. ${e.message ?? e}`)
       }
     })
 
     socket.on("deleteFile", async (fileId: string, callback) => {
       try {
-        try {
-          await deleteFileRL.consume(data.userId, 1)
-        } catch (e) {
-          io.emit("error", "Rate limited: file deletion. Please slow down.")
-        }
-
-        const file = sandboxFiles.fileData.find((f) => f.id === fileId)
-        if (!file) return
-
-        await containers[data.sandboxId].files.remove(
-          path.posix.join(dirName, fileId)
-        )
-        sandboxFiles.fileData = sandboxFiles.fileData.filter(
-          (f) => f.id !== fileId
-        )
-
-        await deleteFile(fileId)
-
-        const newFiles = await getSandboxFiles(data.sandboxId)
-        callback(newFiles.files)
+        await deleteFileRL.consume(data.userId, 1)
+        const newFiles = await fileManager.deleteFile(fileId)
+        callback(newFiles)
       } catch (e: any) {
         console.error("Error deleting file:", e)
         io.emit("error", `Error: file deletion. ${e.message ?? e}`)
       }
     })
 
-    // todo
-    // socket.on("renameFolder", async (folderId: string, newName: string) => {
-    // });
-
     socket.on("deleteFolder", async (folderId: string, callback) => {
       try {
-        const files = await getFolder(folderId)
-
-        await Promise.all(
-          files.map(async (file) => {
-            await containers[data.sandboxId].files.remove(
-              path.posix.join(dirName, file)
-            )
-
-            sandboxFiles.fileData = sandboxFiles.fileData.filter(
-              (f) => f.id !== file
-            )
-
-            await deleteFile(file)
-          })
-        )
-
-        const newFiles = await getSandboxFiles(data.sandboxId)
-
-        callback(newFiles.files)
+        const newFiles = await fileManager.deleteFolder(folderId)
+        callback(newFiles)
       } catch (e: any) {
         console.error("Error deleting folder:", e)
         io.emit("error", `Error: folder deletion. ${e.message ?? e}`)
@@ -762,64 +368,18 @@ io.on("connection", async (socket) => {
 
     socket.on("createTerminal", async (id: string, callback) => {
       try {
-        // Note: The number of terminals per window is limited on the frontend, but not backend
-        if (terminals[id]) {
-          return
-        }
-
         await lockManager.acquireLock(data.sandboxId, async () => {
-          try {
-            terminals[id] = new Terminal(containers[data.sandboxId])
-            await terminals[id].init({
-              onData: (responseString: string) => {
-                io.emit("terminalResponse", { id, data: responseString })
-
-                function extractPortNumber(inputString: string) {
-                  // Remove ANSI escape codes
-                  const cleanedString = inputString.replace(
-                    /\x1B\[[0-9;]*m/g,
-                    ""
-                  )
-
-                  // Regular expression to match port number
-                  const regex = /http:\/\/localhost:(\d+)/
-                  // If a match is found, return the port number
-                  const match = cleanedString.match(regex)
-                  return match ? match[1] : null
-                }
-                const port = parseInt(extractPortNumber(responseString) ?? "")
-                if (port) {
-                  io.emit(
-                    "previewURL",
-                    "https://" + containers[data.sandboxId].getHost(port)
-                  )
-                }
-              },
-              cols: 80,
-              rows: 20,
-              //onExit: () => console.log("Terminal exited", id),
-            })
-
-            const defaultDirectory = path.posix.join(
-              dirName,
-              "projects",
-              data.sandboxId
-            )
-            const defaultCommands = [
-              `cd "${defaultDirectory}"`,
-              "export PS1='user> '",
-              "clear",
-            ]
-            for (const command of defaultCommands)
-              await terminals[id].sendData(command + "\r")
-
-            console.log("Created terminal", id)
-          } catch (e: any) {
-            console.error(`Error creating terminal ${id}:`, e)
-            io.emit("error", `Error: terminal creation. ${e.message ?? e}`)
-          }
+          await terminalManager.createTerminal(id, (responseString: string) => {
+            io.emit("terminalResponse", { id, data: responseString })
+            const port = extractPortNumber(responseString)
+            if (port) {
+              io.emit(
+                "previewURL",
+                "https://" + containers[data.sandboxId].getHost(port)
+              )
+            }
+          })
         })
-
         callback()
       } catch (e: any) {
         console.error(`Error creating terminal ${id}:`, e)
@@ -831,9 +391,7 @@ io.on("connection", async (socket) => {
       "resizeTerminal",
       (dimensions: { cols: number; rows: number }) => {
         try {
-          Object.values(terminals).forEach((t) => {
-            t.resize(dimensions)
-          })
+          terminalManager.resizeTerminal(dimensions)
         } catch (e: any) {
           console.error("Error resizing terminal:", e)
           io.emit("error", `Error: terminal resizing. ${e.message ?? e}`)
@@ -843,11 +401,7 @@ io.on("connection", async (socket) => {
 
     socket.on("terminalData", async (id: string, data: string) => {
       try {
-        if (!terminals[id]) {
-          return
-        }
-
-        await terminals[id].sendData(data)
+        await terminalManager.sendTerminalData(id, data)
       } catch (e: any) {
         console.error("Error writing to terminal:", e)
         io.emit("error", `Error: writing to terminal. ${e.message ?? e}`)
@@ -856,13 +410,7 @@ io.on("connection", async (socket) => {
 
     socket.on("closeTerminal", async (id: string, callback) => {
       try {
-        if (!terminals[id]) {
-          return
-        }
-
-        await terminals[id].close()
-        delete terminals[id]
-
+        await terminalManager.closeTerminal(id)
         callback()
       } catch (e: any) {
         console.error("Error closing terminal:", e)
@@ -930,20 +478,8 @@ io.on("connection", async (socket) => {
           connections[data.sandboxId]--
         }
 
-        // Close all terminals for this connection
-        await Promise.all(
-          Object.entries(terminals).map(async ([key, terminal]) => {
-            await terminal.close()
-            delete terminals[key]
-          })
-        )
-
-        // Stop watching file changes in the container
-        Promise.all(
-          fileWatchers.map(async (handle: WatchHandle) => {
-            await handle.close()
-          })
-        )
+        await terminalManager.closeAllTerminals()
+        await fileManager.closeWatchers()
 
         if (data.isOwner && connections[data.sandboxId] <= 0) {
           socket.broadcast.emit(
@@ -951,23 +487,6 @@ io.on("connection", async (socket) => {
             "The sandbox owner has disconnected."
           )
         }
-
-        // const sockets = await io.fetchSockets();
-        // if (inactivityTimeout) {
-        //   clearTimeout(inactivityTimeout);
-        // }
-        // if (sockets.length === 0) {
-        //   console.log("STARTING TIMER");
-        //   inactivityTimeout = setTimeout(() => {
-        //     io.fetchSockets().then(async (sockets) => {
-        //       if (sockets.length === 0) {
-        //         console.log("Server stopped", res);
-        //       }
-        //     });
-        //   }, 20000);
-        // } else {
-        //   console.log("number of sockets", sockets.length);
-        // }
       } catch (e: any) {
         console.log("Error disconnecting:", e)
         io.emit("error", `Error: disconnecting. ${e.message ?? e}`)
