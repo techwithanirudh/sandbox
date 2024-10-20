@@ -815,12 +815,28 @@ io.on("connection", async (socket) => {
             generateCodePromise,
           ]);
 
-          const json = await generateCodeResponse.json();
+          if (!generateCodeResponse.ok) {
+            throw new Error(`HTTP error! status: ${generateCodeResponse.status}`);
+          }
 
-          callback({ response: json.response, success: true });
+          const reader = generateCodeResponse.body?.getReader();
+          const decoder = new TextDecoder();
+          let result = '';
+
+          if (reader) {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              result += decoder.decode(value, { stream: true });
+            }
+          }
+
+          // The result should now contain only the modified code
+          callback({ response: result.trim(), success: true });
         } catch (e: any) {
           console.error("Error generating code:", e);
           io.emit("error", `Error: code generation. ${e.message ?? e}`);
+          callback({ response: "Error generating code. Please try again.", success: false });
         }
       }
     );

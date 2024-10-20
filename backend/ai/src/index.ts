@@ -18,19 +18,52 @@ export default {
       });
     }
 
-    if (request.method !== "POST") {
+    if (request.method !== "GET" && request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
-    const body = await request.json() as { messages: unknown; context: unknown; activeFileContent: string };
+
+    let body;
+    let isEditCodeWidget = false;
+    if (request.method === "POST") {
+      body = await request.json() as { messages: unknown; context: unknown; activeFileContent: string };
+    } else {
+      const url = new URL(request.url);
+      const fileName = url.searchParams.get("fileName") || "";
+      const code = url.searchParams.get("code") || "";
+      const line = url.searchParams.get("line") || "";
+      const instructions = url.searchParams.get("instructions") || "";
+
+      body = {
+        messages: [{ role: "human", content: instructions }],
+        context: `File: ${fileName}\nLine: ${line}\nCode:\n${code}`,
+        activeFileContent: code,
+      };
+      isEditCodeWidget = true;
+    }
+
     const messages = body.messages;
     const context = body.context;
     const activeFileContent = body.activeFileContent;
 
-    if (!Array.isArray(messages)) {
-      return new Response("Invalid messages format", { status: 400 });
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return new Response("Invalid or empty messages", { status: 400 });
     }
 
-    const systemMessage = `You are an intelligent programming assistant. Please respond to the following request concisely. If your response includes code, please format it using triple backticks (\`\`\`) with the appropriate language identifier. For example:
+    let systemMessage;
+    if (isEditCodeWidget) {
+      systemMessage = `You are an AI code editor. Your task is to modify the given code based on the user's instructions. Only output the modified code, without any explanations or markdown formatting. The code should be a direct replacement for the existing code.
+
+Context:
+${context}
+
+Active File Content:
+${activeFileContent}
+
+Instructions: ${messages[0].content}
+
+Respond only with the modified code that can directly replace the existing code.`;
+    } else {
+      systemMessage = `You are an intelligent programming assistant. Please respond to the following request concisely. If your response includes code, please format it using triple backticks (\`\`\`) with the appropriate language identifier. For example:
 
 \`\`\`python
 print("Hello, World!")
@@ -40,6 +73,7 @@ Provide a clear and concise explanation along with any code snippets. Keep your 
 
 ${context ? `Context:\n${context}\n` : ''}
 ${activeFileContent ? `Active File Content:\n${activeFileContent}\n` : ''}`;
+    }
 
     const anthropicMessages = messages.map(msg => ({
       role: msg.role === 'human' ? 'user' : 'assistant',
