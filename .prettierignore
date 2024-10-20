@@ -1,0 +1,4 @@
+frontend/**
+backend/ai/**
+backend/database/**
+backend/storage/**
