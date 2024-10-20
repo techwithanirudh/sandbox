@@ -10,17 +10,12 @@ export type SandboxFiles = {
   fileData: TFileData[]
 }
 
-const processFiles = async (paths: string[], id: string) => {
+// Convert list of paths to the hierchical file structure used by the editor
+function generateFileStructure(paths: string[]): (TFolder | TFile)[] {
   const root: TFolder = { id: "/", type: "folder", name: "/", children: [] }
-  const fileData: TFileData[] = []
 
   paths.forEach((path) => {
-    const allParts = path.split("/")
-    if (allParts[1] !== id) {
-      return
-    }
-
-    const parts = allParts.slice(2)
+    const parts = path.split("/")
     let current: TFolder = root
 
     for (let i = 0; i < parts.length; i++) {
@@ -36,7 +31,6 @@ const processFiles = async (paths: string[], id: string) => {
         if (isFile) {
           const file: TFile = { id: `/${parts.join("/")}`, type: "file", name: part }
           current.children.push(file)
-          fileData.push({ id: `/${parts.join("/")}`, data: "" })
         } else {
           const folder: TFolder = {
             id: `/${parts.slice(0, i + 1).join("/")}`,
@@ -51,21 +45,7 @@ const processFiles = async (paths: string[], id: string) => {
     }
   })
 
-  await Promise.all(
-    fileData.map(async (file) => {
-      const data = await RemoteFileStorage.fetchFileContent(`projects/${id}${file.id}`)
-      file.data = data
-    })
-  )
-
-  return {
-    files: root.children,
-    fileData,
-  }
-}
-
-const getSandboxFiles = async (id: string) => {
-  return await processFiles(await RemoteFileStorage.getSandboxPaths(id), id)
+  return root.children
 }
 
 // FileManager class to handle file operations in a sandbox
@@ -89,14 +69,66 @@ export class FileManager {
     this.refreshFileList = refreshFileList
   }
 
+  // Fetch file data from list of paths
+  private async generateFileData(paths: string[]): Promise<TFileData[]> {
+    const fileData: TFileData[] = []
+
+    for (const path of paths) {
+      const parts = path.split("/")
+      const isFile = parts.length > 0 && parts[parts.length - 1].length > 0
+
+      if (isFile) {
+        const fileId = `/${parts.join("/")}`
+        const data = await RemoteFileStorage.fetchFileContent(`projects/${this.sandboxId}${fileId}`)
+        fileData.push({ id: fileId, data })
+      }
+    }
+
+    return fileData
+  }
+
+  // Convert local file path to remote path
   private getRemoteFileId(localId: string): string {
     return `projects/${this.sandboxId}${localId}`
   }
 
+  // Convert remote file path to local file path
+  private getLocalFileId(remoteId: string): string | undefined {
+    const allParts = remoteId.split("/")
+    if (allParts[1] !== this.sandboxId) return undefined;
+    return allParts.slice(2).join("/")
+  }
+
+  // Convert remote file paths to local file paths
+  private getLocalFileIds(remoteIds: string[]): string[] {
+    return remoteIds
+      .map(this.getLocalFileId.bind(this))
+      .filter((id) => id !== undefined);
+  }
+
+  // Download files from remote storage
+  private async updateFileData(): Promise<TFileData[]> {
+    const remotePaths = await RemoteFileStorage.getSandboxPaths(this.sandboxId)
+    const localPaths = this.getLocalFileIds(remotePaths)
+    this.sandboxFiles.fileData = await this.generateFileData(localPaths)
+    return this.sandboxFiles.fileData
+  }
+
+  // Update file structure
+  private async updateFileStructure(): Promise<(TFolder | TFile)[]> {
+    const remotePaths = await RemoteFileStorage.getSandboxPaths(this.sandboxId)
+    const localPaths = this.getLocalFileIds(remotePaths)
+    this.sandboxFiles.files = generateFileStructure(localPaths)
+    return this.sandboxFiles.files
+  }
+
   // Initialize the FileManager
   async initialize() {
-    this.sandboxFiles = await getSandboxFiles(this.sandboxId)
-    const projectDirectory = this.dirName
+
+    // Download files from remote file storage
+    await this.updateFileStructure()
+    await this.updateFileData()
+
     // Copy all files from the project to the container
     const promises = this.sandboxFiles.fileData.map(async (file) => {
       try {
@@ -115,15 +147,15 @@ export class FileManager {
     // Make the logged in user the owner of all project files
     this.fixPermissions()
 
-    await this.watchDirectory(projectDirectory)
-    await this.watchSubdirectories(projectDirectory)
+    await this.watchDirectory(this.dirName)
+    await this.watchSubdirectories(this.dirName)
   }
 
   // Check if the given path is a directory
-  private async isDirectory(projectDirectory: string): Promise<boolean> {
+  private async isDirectory(directoryPath: string): Promise<boolean> {
     try {
       const result = await this.sandbox.commands.run(
-        `[ -d "${projectDirectory}" ] && echo "true" || echo "false"`
+        `[ -d "${directoryPath}" ] && echo "true" || echo "false"`
       )
       return result.stdout.trim() === "true"
     } catch (e: any) {
@@ -324,7 +356,8 @@ export class FileManager {
 
   // Get folder content
   async getFolder(folderId: string): Promise<string[]> {
-    return RemoteFileStorage.getFolder(this.getRemoteFileId(folderId))
+    const remotePaths = await RemoteFileStorage.getFolder(this.getRemoteFileId(folderId))
+    return this.getLocalFileIds(remotePaths)
   }
 
   // Save file content
@@ -363,8 +396,7 @@ export class FileManager {
     file.id = newFileId
 
     await RemoteFileStorage.renameFile(this.getRemoteFileId(fileId), this.getRemoteFileId(newFileId), fileData.data)
-    const newFiles = await getSandboxFiles(this.sandboxId)
-    return newFiles.files
+    return this.updateFileStructure()
   }
 
   // Move a file within the container
@@ -445,9 +477,7 @@ export class FileManager {
     )
 
     await RemoteFileStorage.deleteFile(this.getRemoteFileId(fileId))
-
-    const newFiles = await getSandboxFiles(this.sandboxId)
-    return newFiles.files
+    return this.updateFileStructure()
   }
 
   // Delete a folder
@@ -464,8 +494,7 @@ export class FileManager {
       })
     )
 
-    const newFiles = await getSandboxFiles(this.sandboxId)
-    return newFiles.files
+    return this.updateFileStructure()
   }
 
   // Close all file watchers
