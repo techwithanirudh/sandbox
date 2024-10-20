@@ -4,6 +4,7 @@ import {
   Link,
   RotateCw,
   TerminalSquare,
+  UnfoldVertical,
 } from "lucide-react"
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from "react"
 import { toast } from "sonner"
@@ -32,24 +33,18 @@ ref: React.Ref<{
 
   return (
     <>
-      <div
-        className={`${collapsed ? "h-full" : "h-10"
-          } select-none w-full flex gap-2`}
-      >
         <div className="h-8 rounded-md px-3 bg-secondary flex items-center w-full justify-between">
           <div className="text-xs">Preview</div>
           <div className="flex space-x-1 translate-x-1">
             {collapsed ? (
-              <PreviewButton disabled onClick={() => { }}>
-                <TerminalSquare className="w-4 h-4" />
+              <PreviewButton onClick={open}>
+                <UnfoldVertical className="w-4 h-4" />
               </PreviewButton>
             ) : (
               <>
-                {/* Removed the unfoldvertical button since we have the same thing via the run button.
-                
                 <PreviewButton onClick={open}>
                   <UnfoldVertical className="w-4 h-4" />
-                </PreviewButton> */}
+                </PreviewButton>
 
                 <PreviewButton
                   onClick={() => {
@@ -66,18 +61,6 @@ ref: React.Ref<{
             )}
           </div>
         </div>
-      </div>
-      {collapsed ? null : (
-        <div className="w-full grow rounded-md overflow-hidden bg-foreground">
-          <iframe
-            key={iframeKey}
-            ref={frameRef}
-            width={"100%"}
-            height={"100%"}
-            src={src}
-          />
-        </div>
-      )}
     </>
   )
 })
