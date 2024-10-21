@@ -4,6 +4,7 @@ import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import ContextDisplay from './ContextDisplay';
 import { handleSend, handleStopGeneration } from './lib/chatUtils';
+import { X } from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -11,7 +12,7 @@ interface Message {
   context?: string;
 }
 
-export default function AIChat({ activeFileContent, activeFileName }: { activeFileContent: string, activeFileName: string }) {
+export default function AIChat({ activeFileContent, activeFileName, onClose }: { activeFileContent: string, activeFileName: string, onClose: () => void }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -40,7 +41,17 @@ export default function AIChat({ activeFileContent, activeFileName }: { activeFi
     <div className="flex flex-col h-screen w-full">
       <div className="flex justify-between items-center p-2 border-b">
         <span className="text-muted-foreground/50 font-medium">CHAT</span>
-        <span className="text-muted-foreground/50 font-medium truncate max-w-[50%]" title={activeFileName}>{activeFileName}</span>
+        <div className="flex items-center h-full">
+          <span className="text-muted-foreground/50 font-medium">{activeFileName}</span>
+          <div className="mx-2 h-full w-px bg-muted-foreground/20"></div>
+          <button
+            onClick={onClose}
+            className="text-muted-foreground/50 hover:text-muted-foreground focus:outline-none"
+            aria-label="Close AI Chat"
+          >
+            <X size={18} />
+          </button>
+        </div>
       </div>
       <div ref={chatContainerRef} className="flex-grow overflow-y-auto p-4 space-y-4">
         {messages.map((message, messageIndex) => (

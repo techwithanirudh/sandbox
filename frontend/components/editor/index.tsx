@@ -76,6 +76,7 @@ export default function CodeEditor({
 
   // Layout state
   const [isHorizontalLayout, setIsHorizontalLayout] = useState(false);
+  const [previousLayout, setPreviousLayout] = useState(false);
 
   // AI Chat state
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
@@ -530,13 +531,19 @@ export default function CodeEditor({
         e.preventDefault()
         setIsAIChatOpen(prev => !prev);
       }
-    }
-    document.addEventListener("keydown", down)
-  
+    };
+
+    document.addEventListener("keydown", down);
+
+    // Added this line to prevent Monaco editor from handling Cmd/Ctrl+L
+    editorRef?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyL, () => {
+      setIsAIChatOpen(prev => !prev);
+    });
+
     return () => {
       document.removeEventListener("keydown", down)
     }
-  }, [activeFileId, tabs, debouncedSaveData, setIsAIChatOpen])
+  }, [activeFileId, tabs, debouncedSaveData, setIsAIChatOpen, editorRef])
 
   // Liveblocks live collaboration setup effect
   useEffect(() => {
@@ -848,7 +855,24 @@ export default function CodeEditor({
   };
 
   const toggleLayout = () => {
-    setIsHorizontalLayout(prev => !prev);
+    if (!isAIChatOpen) {
+      setIsHorizontalLayout(prev => !prev);
+    }
+  };
+
+  // Add an effect to handle layout changes when AI chat is opened/closed
+  useEffect(() => {
+    if (isAIChatOpen) {
+      setPreviousLayout(isHorizontalLayout);
+      setIsHorizontalLayout(true);
+    } else {
+      setIsHorizontalLayout(previousLayout);
+    }
+  }, [isAIChatOpen]);
+
+  // Modify the toggleAIChat function
+  const toggleAIChat = () => {
+    setIsAIChatOpen(prev => !prev);
   };
 
   // On disabled access for shared users, show un-interactable loading placeholder + info modal
@@ -984,7 +1008,7 @@ export default function CodeEditor({
           deletingFolderId={deletingFolderId}
         />
         {/* Outer ResizablePanelGroup for main layout */}
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup direction={isHorizontalLayout ? "horizontal" : "vertical"}>
           {/* Left side: Editor and Preview/Terminal */}
           <ResizablePanel defaultSize={isAIChatOpen ? 80 : 100} minSize={50}>
             <ResizablePanelGroup direction={isHorizontalLayout ? "vertical" : "horizontal"}>
@@ -1101,7 +1125,13 @@ export default function CodeEditor({
                     onExpand={() => setIsPreviewCollapsed(false)}
                   >
                     <div className="flex items-center justify-between">
-                      <Button onClick={toggleLayout} size="sm" variant="ghost" className="mr-2 border">
+                      <Button
+                        onClick={toggleLayout}
+                        size="sm"
+                        variant="ghost"
+                        className="mr-2 border"
+                        disabled={isAIChatOpen}
+                        >
                         {isHorizontalLayout ? <ArrowRightToLine className="w-4 h-4" /> : <ArrowDownToLine className="w-4 h-4" />}
                       </Button>
                       <PreviewWindow
@@ -1145,10 +1175,11 @@ export default function CodeEditor({
             <>
               <ResizableHandle />
               <ResizablePanel defaultSize={30} minSize={15}>
-              <AIChat 
-                activeFileContent={activeFileContent} 
-                activeFileName={tabs.find(tab => tab.id === activeFileId)?.name || 'No file selected'}
-              />
+                <AIChat 
+                  activeFileContent={activeFileContent} 
+                  activeFileName={tabs.find(tab => tab.id === activeFileId)?.name || 'No file selected'}
+                  onClose={toggleAIChat}
+                />
               </ResizablePanel>
             </>
           )}
