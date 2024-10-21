@@ -24,6 +24,7 @@ import { parseTSConfigToMonacoOptions } from "@/lib/tsconfig"
 import { Sandbox, TFile, TFolder, TTab, User } from "@/lib/types"
 import {
   addNew,
+  cn,
   debounce,
   deepMerge,
   processFileType,
@@ -926,7 +927,10 @@ export default function CodeEditor({
             )}
           </AnimatePresence>
         </div>
-        <div className="z-50 p-1" ref={generateWidgetRef}>
+        <div
+          className={cn(generate.show && "z-50 p-1")}
+          ref={generateWidgetRef}
+        >
           {generate.show ? (
             <GenerateInput
               user={userData}

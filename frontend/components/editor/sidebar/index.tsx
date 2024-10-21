@@ -1,20 +1,16 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
 import { Sandbox, TFile, TFolder, TTab } from "@/lib/types"
-import {
-  FilePlus,
-  FolderPlus,
-  Loader2,
-  MessageSquareMore,
-  Sparkles,
-} from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { FilePlus, FolderPlus, MessageSquareMore, Sparkles } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Socket } from "socket.io-client"
 import SidebarFile from "./file"
 import SidebarFolder from "./folder"
 import New from "./new"
 
+import Button from "@/components/ui/customButton"
+import { Skeleton } from "@/components/ui/skeleton"
+import { sortFileExplorer } from "@/lib/utils"
 import {
   dropTargetForElements,
   monitorForElements,
@@ -52,7 +48,9 @@ export default function Sidebar({
 
   const [creatingNew, setCreatingNew] = useState<"file" | "folder" | null>(null)
   const [movingId, setMovingId] = useState("")
-
+  const sortedFiles = useMemo(() => {
+    return sortFileExplorer(files)
+  }, [files])
   useEffect(() => {
     const el = ref.current
 
@@ -133,13 +131,15 @@ export default function Sidebar({
             isDraggedOver ? "bg-secondary/50" : ""
           } rounded-sm w-full mt-1 flex flex-col`}
         > */}
-          {files.length === 0 ? (
-            <div className="w-full flex justify-center">
-              <Loader2 className="w-4 h-4 animate-spin" />
+          {sortedFiles.length === 0 ? (
+            <div className="w-full flex flex-col justify-center">
+              {new Array(6).fill(0).map((_, i) => (
+                <Skeleton key={i} className="h-[1.625rem] mb-0.5 rounded-sm" />
+              ))}
             </div>
           ) : (
             <>
-              {files.map((child) =>
+              {sortedFiles.map((child) =>
                 child.type === "file" ? (
                   <SidebarFile
                     key={child.id}
