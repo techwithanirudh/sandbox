@@ -1,9 +1,6 @@
 "use client"
 
-import Image from "next/image"
 import Logo from "@/assets/logo.svg"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Loader2, X } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -11,6 +8,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Loader2, X } from "lucide-react"
+import Image from "next/image"
 import { useEffect, useState } from "react"
 
 export default function Loading({

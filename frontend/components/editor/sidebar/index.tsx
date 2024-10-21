@@ -1,28 +1,19 @@
 "use client"
 
-import {
-  FilePlus,
-  FolderPlus,
-  Loader2,
-  MonitorPlay,
-  Search,
-  Sparkles,
-} from "lucide-react"
+import { Sandbox, TFile, TFolder, TTab } from "@/lib/types"
+import { FilePlus, FolderPlus } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Socket } from "socket.io-client"
 import SidebarFile from "./file"
 import SidebarFolder from "./folder"
-import { Sandbox, TFile, TFolder, TTab } from "@/lib/types"
-import { useEffect, useMemo, useRef, useState } from "react"
 import New from "./new"
-import { Socket } from "socket.io-client"
-import { Switch } from "@/components/ui/switch"
 
+import { Skeleton } from "@/components/ui/skeleton"
+import { sortFileExplorer } from "@/lib/utils"
 import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter"
-import Button from "@/components/ui/customButton"
-import { Skeleton } from "@/components/ui/skeleton"
-import { sortFileExplorer } from "@/lib/utils"
 
 export default function Sidebar({
   sandboxData,

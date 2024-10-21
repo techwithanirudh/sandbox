@@ -1,9 +1,9 @@
+import Logo from "@/assets/logo.svg"
+import { User } from "@/lib/types"
 import Image from "next/image"
 import Link from "next/link"
-import Logo from "@/assets/logo.svg"
-import DashboardNavbarSearch from "./search"
 import UserButton from "../../ui/userButton"
-import { User } from "@/lib/types"
+import DashboardNavbarSearch from "./search"
 
 export default function DashboardNavbar({ userData }: { userData: User }) {
   return (

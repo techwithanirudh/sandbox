@@ -1,8 +1,8 @@
-import Image from "next/image"
 import Logo from "@/assets/logo.svg"
 import XLogo from "@/assets/x.svg"
 import Button from "@/components/ui/customButton"
 import { ChevronRight } from "lucide-react"
+import Image from "next/image"
 import Link from "next/link"
 
 export default function Landing() {
