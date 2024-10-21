@@ -1,10 +1,10 @@
+import { Check, ChevronDown, ChevronUp, Copy, CornerUpLeft } from 'lucide-react';
 import React, { useState } from 'react';
-import { Button } from '../../ui/button';
-import { ChevronUp, ChevronDown, Copy, Check, CornerUpLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
+import { Button } from '../../ui/button';
 import { copyToClipboard, stringifyContent } from './lib/chatUtils';
 
 interface MessageProps {

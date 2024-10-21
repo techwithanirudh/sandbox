@@ -3,16 +3,14 @@
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
+import { zodResolver } from "@hookform/resolvers/zod"
 import Image from "next/image"
 import { useState } from "react"
-import { set, z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
+import { z } from "zod"
 
 import {
   Form,
@@ -31,12 +29,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useUser } from "@clerk/nextjs"
 import { createSandbox } from "@/lib/actions"
-import { useRouter } from "next/navigation"
-import { Loader2 } from "lucide-react"
-import { Button } from "../ui/button"
 import { projectTemplates } from "@/lib/data"
+import { useUser } from "@clerk/nextjs"
+import { Loader2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Button } from "../ui/button"
 
 const formSchema = z.object({
   name: z

@@ -1,5 +1,4 @@
-import React from 'react';
-import { ChevronUp, ChevronDown, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 
 interface ContextDisplayProps {
   context: string | null;

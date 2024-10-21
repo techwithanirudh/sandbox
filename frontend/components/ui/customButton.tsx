@@ -1,6 +1,5 @@
-import * as React from "react"
-import { Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import * as React from "react"
 
 const Button = ({
   children,

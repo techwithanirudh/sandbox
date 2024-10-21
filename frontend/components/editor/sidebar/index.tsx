@@ -1,25 +1,25 @@
-"use client";
+"use client"
 
+import { Button } from "@/components/ui/button"
+import { Sandbox, TFile, TFolder, TTab } from "@/lib/types"
 import {
   FilePlus,
   FolderPlus,
   Loader2,
-  Sparkles,
   MessageSquareMore,
-} from "lucide-react";
-import SidebarFile from "./file";
-import SidebarFolder from "./folder";
-import { Sandbox, TFile, TFolder, TTab } from "@/lib/types";
-import { useEffect, useRef, useState } from "react";
-import New from "./new";
-import { Socket } from "socket.io-client";
-import { Button } from "@/components/ui/button";
+  Sparkles,
+} from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Socket } from "socket.io-client"
+import SidebarFile from "./file"
+import SidebarFolder from "./folder"
+import New from "./new"
 
 import {
   dropTargetForElements,
   monitorForElements,
-} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-  
+} from "@atlaskit/pragmatic-drag-and-drop/element/adapter"
+
 export default function Sidebar({
   sandboxData,
   files,
@@ -32,75 +32,73 @@ export default function Sidebar({
   addNew,
   deletingFolderId,
 }: {
-  sandboxData: Sandbox;
-  files: (TFile | TFolder)[];
-  selectFile: (tab: TTab) => void;
+  sandboxData: Sandbox
+  files: (TFile | TFolder)[]
+  selectFile: (tab: TTab) => void
   handleRename: (
     id: string,
     newName: string,
     oldName: string,
     type: "file" | "folder"
-  ) => boolean;
-  handleDeleteFile: (file: TFile) => void;
-  handleDeleteFolder: (folder: TFolder) => void;
-  socket: Socket;
-  setFiles: (files: (TFile | TFolder)[]) => void;
-  addNew: (name: string, type: "file" | "folder") => void;
-  deletingFolderId: string;
+  ) => boolean
+  handleDeleteFile: (file: TFile) => void
+  handleDeleteFolder: (folder: TFolder) => void
+  socket: Socket
+  setFiles: (files: (TFile | TFolder)[]) => void
+  addNew: (name: string, type: "file" | "folder") => void
+  deletingFolderId: string
 }) {
-  const ref = useRef(null); // drop target
+  const ref = useRef(null) // drop target
 
-  const [creatingNew, setCreatingNew] = useState<"file" | "folder" | null>(
-    null
-  );
-  const [movingId, setMovingId] = useState("");
+  const [creatingNew, setCreatingNew] = useState<"file" | "folder" | null>(null)
+  const [movingId, setMovingId] = useState("")
 
   useEffect(() => {
-    const el = ref.current;
+    const el = ref.current
 
     if (el) {
       return dropTargetForElements({
         element: el,
         getData: () => ({ id: `projects/${sandboxData.id}` }),
         canDrop: ({ source }) => {
-          const file = files.find((child) => child.id === source.data.id);
-          return !file;
+          const file = files.find((child) => child.id === source.data.id)
+          return !file
         },
-      });
+      })
     }
-  }, [files]);
+  }, [files])
 
   useEffect(() => {
     return monitorForElements({
       onDrop({ source, location }) {
-        const destination = location.current.dropTargets[0];
+        const destination = location.current.dropTargets[0]
         if (!destination) {
-          return;
+          return
         }
 
-        const fileId = source.data.id as string;
-        const folderId = destination.data.id as string;
+        const fileId = source.data.id as string
+        const folderId = destination.data.id as string
 
-        const fileFolder = fileId.split("/").slice(0, -1).join("/");
+        const fileFolder = fileId.split("/").slice(0, -1).join("/")
         if (fileFolder === folderId) {
-          return;
+          return
         }
 
-        console.log("move file", fileId, "to folder", folderId);
+        console.log("move file", fileId, "to folder", folderId)
 
-        setMovingId(fileId);
+        setMovingId(fileId)
         socket.emit(
           "moveFile",
           fileId,
           folderId,
           (response: (TFolder | TFile)[]) => {
-            setFiles(response);
-            setMovingId("");
+            setFiles(response)
+            setMovingId("")
           }
-        );
+        )
       },
-    });
-  }, []);
+    })
+  }, [])
 
   return (
     <div className="h-full w-56 select-none flex flex-col text-sm">
@@ -170,7 +168,7 @@ export default function Sidebar({
                   socket={socket}
                   type={creatingNew}
                   stopEditing={() => {
-                    setCreatingNew(null);
+                    setCreatingNew(null)
                   }}
                   addNew={addNew}
                 />
@@ -180,7 +178,13 @@ export default function Sidebar({
         </div>
       </div>
       <div className="fixed bottom-0 w-48 flex flex-col p-2 bg-background">
-        <Button variant="ghost" className="w-full justify-start text-sm text-muted-foreground font-normal h-8 px-2 mb-2" disabled aria-disabled="true" style={{ opacity: 1}}>
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-sm text-muted-foreground font-normal h-8 px-2 mb-2"
+          disabled
+          aria-disabled="true"
+          style={{ opacity: 1 }}
+        >
           <Sparkles className="h-4 w-4 mr-2 text-indigo-500 opacity-70" />
           Copilot
           <div className="ml-auto">
@@ -189,16 +193,22 @@ export default function Sidebar({
             </kbd>
           </div>
         </Button>
-        <Button variant="ghost" className="w-full justify-start text-sm text-muted-foreground font-normal h-8 px-2 mb-2" disabled aria-disabled="true" style={{ opacity: 1 }}>
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-sm text-muted-foreground font-normal h-8 px-2 mb-2"
+          disabled
+          aria-disabled="true"
+          style={{ opacity: 1 }}
+        >
           <MessageSquareMore className="h-4 w-4 mr-2 text-indigo-500 opacity-70" />
-          AI Chat  
+          AI Chat
           <div className="ml-auto">
             <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
               <span className="text-xs">⌘</span>L
-            </kbd> 
+            </kbd>
           </div>
         </Button>
       </div>
     </div>
-  );
+  )
 }
