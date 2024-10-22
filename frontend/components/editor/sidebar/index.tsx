@@ -8,7 +8,7 @@ import SidebarFile from "./file"
 import SidebarFolder from "./folder"
 import New from "./new"
 
-import Button from "@/components/ui/customButton"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { sortFileExplorer } from "@/lib/utils"
 import {
