@@ -224,10 +224,11 @@ io.on("connection", async (socket) => {
         containers[data.sandboxId],
         sendLoadedEvent
       )
-      await fileManagers[data.sandboxId].initialize()
       terminalManagers[data.sandboxId] = new TerminalManager(
         containers[data.sandboxId]
       )
+      console.log(`terminal manager set up for ${data.sandboxId}`)
+      await fileManagers[data.sandboxId].initialize()
     }
 
     const fileManager = fileManagers[data.sandboxId]
@@ -415,6 +416,12 @@ io.on("connection", async (socket) => {
     socket.on("createTerminal", async (id: string, callback) => {
       try {
         await lockManager.acquireLock(data.sandboxId, async () => {
+          let terminalManager = terminalManagers[data.sandboxId]
+          if (!terminalManager) {
+            terminalManager = terminalManagers[data.sandboxId] =
+              new TerminalManager(containers[data.sandboxId])
+          }
+
           await terminalManager.createTerminal(id, (responseString: string) => {
             socket.emit("terminalResponse", { id, data: responseString })
             const port = extractPortNumber(responseString)
