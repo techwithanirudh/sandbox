@@ -1,13 +1,13 @@
 "use client"
 
-import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
+import { Terminal } from "@xterm/xterm"
 import "./xterm.css"
 
-import { ElementRef, useEffect, useRef, useState } from "react"
-import { Socket } from "socket.io-client"
-import { Loader2 } from "lucide-react"
 import { debounce } from "@/lib/utils"
+import { Loader2 } from "lucide-react"
+import { ElementRef, useEffect, useRef } from "react"
+import { Socket } from "socket.io-client"
 
 export default function EditorTerminal({
   socket,

@@ -1,8 +1,8 @@
 import { type ClassValue, clsx } from "clsx"
 // import { toast } from "sonner"
 import { twMerge } from "tailwind-merge"
-import { Sandbox, TFile, TFolder } from "./types"
 import fileExtToLang from "./file-extension-to-language.json"
+import { Sandbox, TFile, TFolder } from "./types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

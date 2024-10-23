@@ -207,7 +207,7 @@ io.on("connection", async (socket) => {
           }
         } catch (e: any) {
           console.error(`Error creating container ${data.sandboxId}:`, e)
-          io.emit("error", `Error: container creation. ${e.message ?? e}`)
+          socket.emit("error", `Error: container creation. ${e.message ?? e}`)
         }
       }
     )
@@ -244,7 +244,7 @@ io.on("connection", async (socket) => {
         await containers[data.sandboxId].setTimeout(CONTAINER_TIMEOUT)
       } catch (e: any) {
         console.error("Error setting timeout:", e)
-        io.emit("error", `Error: set timeout. ${e.message ?? e}`)
+        socket.emit("error", `Error: set timeout. ${e.message ?? e}`)
       }
     })
 
@@ -255,7 +255,7 @@ io.on("connection", async (socket) => {
         callback(fileContent)
       } catch (e: any) {
         console.error("Error getting file:", e)
-        io.emit("error", `Error: get file. ${e.message ?? e}`)
+        socket.emit("error", `Error: get file. ${e.message ?? e}`)
       }
     })
 
@@ -266,7 +266,7 @@ io.on("connection", async (socket) => {
         callback(files)
       } catch (e: any) {
         console.error("Error getting folder:", e)
-        io.emit("error", `Error: get folder. ${e.message ?? e}`)
+        socket.emit("error", `Error: get folder. ${e.message ?? e}`)
       }
     })
 
@@ -277,7 +277,7 @@ io.on("connection", async (socket) => {
         await fileManager.saveFile(fileId, body)
       } catch (e: any) {
         console.error("Error saving file:", e)
-        io.emit("error", `Error: file saving. ${e.message ?? e}`)
+        socket.emit("error", `Error: file saving. ${e.message ?? e}`)
       }
     })
 
@@ -290,7 +290,7 @@ io.on("connection", async (socket) => {
           callback(newFiles)
         } catch (e: any) {
           console.error("Error moving file:", e)
-          io.emit("error", `Error: file moving. ${e.message ?? e}`)
+          socket.emit("error", `Error: file moving. ${e.message ?? e}`)
         }
       }
     )
@@ -361,7 +361,7 @@ io.on("connection", async (socket) => {
         callback({ success })
       } catch (e: any) {
         console.error("Error creating file:", e)
-        io.emit("error", `Error: file creation. ${e.message ?? e}`)
+        socket.emit("error", `Error: file creation. ${e.message ?? e}`)
       }
     })
 
@@ -373,7 +373,7 @@ io.on("connection", async (socket) => {
         callback()
       } catch (e: any) {
         console.error("Error creating folder:", e)
-        io.emit("error", `Error: folder creation. ${e.message ?? e}`)
+        socket.emit("error", `Error: folder creation. ${e.message ?? e}`)
       }
     })
 
@@ -384,7 +384,7 @@ io.on("connection", async (socket) => {
         await fileManager.renameFile(fileId, newName)
       } catch (e: any) {
         console.error("Error renaming file:", e)
-        io.emit("error", `Error: file renaming. ${e.message ?? e}`)
+        socket.emit("error", `Error: file renaming. ${e.message ?? e}`)
       }
     })
 
@@ -396,7 +396,7 @@ io.on("connection", async (socket) => {
         callback(newFiles)
       } catch (e: any) {
         console.error("Error deleting file:", e)
-        io.emit("error", `Error: file deletion. ${e.message ?? e}`)
+        socket.emit("error", `Error: file deletion. ${e.message ?? e}`)
       }
     })
 
@@ -407,7 +407,7 @@ io.on("connection", async (socket) => {
         callback(newFiles)
       } catch (e: any) {
         console.error("Error deleting folder:", e)
-        io.emit("error", `Error: folder deletion. ${e.message ?? e}`)
+        socket.emit("error", `Error: folder deletion. ${e.message ?? e}`)
       }
     })
 
@@ -416,10 +416,10 @@ io.on("connection", async (socket) => {
       try {
         await lockManager.acquireLock(data.sandboxId, async () => {
           await terminalManager.createTerminal(id, (responseString: string) => {
-            io.emit("terminalResponse", { id, data: responseString })
+            socket.emit("terminalResponse", { id, data: responseString })
             const port = extractPortNumber(responseString)
             if (port) {
-              io.emit(
+              socket.emit(
                 "previewURL",
                 "https://" + containers[data.sandboxId].getHost(port)
               )
@@ -429,7 +429,7 @@ io.on("connection", async (socket) => {
         callback()
       } catch (e: any) {
         console.error(`Error creating terminal ${id}:`, e)
-        io.emit("error", `Error: terminal creation. ${e.message ?? e}`)
+        socket.emit("error", `Error: terminal creation. ${e.message ?? e}`)
       }
     })
 
@@ -441,7 +441,7 @@ io.on("connection", async (socket) => {
           terminalManager.resizeTerminal(dimensions)
         } catch (e: any) {
           console.error("Error resizing terminal:", e)
-          io.emit("error", `Error: terminal resizing. ${e.message ?? e}`)
+          socket.emit("error", `Error: terminal resizing. ${e.message ?? e}`)
         }
       }
     )
@@ -452,7 +452,7 @@ io.on("connection", async (socket) => {
         await terminalManager.sendTerminalData(id, data)
       } catch (e: any) {
         console.error("Error writing to terminal:", e)
-        io.emit("error", `Error: writing to terminal. ${e.message ?? e}`)
+        socket.emit("error", `Error: writing to terminal. ${e.message ?? e}`)
       }
     })
 
@@ -463,7 +463,7 @@ io.on("connection", async (socket) => {
         callback()
       } catch (e: any) {
         console.error("Error closing terminal:", e)
-        io.emit("error", `Error: closing terminal. ${e.message ?? e}`)
+        socket.emit("error", `Error: closing terminal. ${e.message ?? e}`)
       }
     })
 
@@ -488,7 +488,7 @@ io.on("connection", async (socket) => {
           callback(result)
         } catch (e: any) {
           console.error("Error generating code:", e)
-          io.emit("error", `Error: code generation. ${e.message ?? e}`)
+          socket.emit("error", `Error: code generation. ${e.message ?? e}`)
         }
       }
     )
@@ -511,12 +511,12 @@ io.on("connection", async (socket) => {
         }
       } catch (e: any) {
         console.log("Error disconnecting:", e)
-        io.emit("error", `Error: disconnecting. ${e.message ?? e}`)
+        socket.emit("error", `Error: disconnecting. ${e.message ?? e}`)
       }
     })
   } catch (e: any) {
     console.error("Error connecting:", e)
-    io.emit("error", `Error: connection. ${e.message ?? e}`)
+    socket.emit("error", `Error: connection. ${e.message ?? e}`)
   }
 })
 

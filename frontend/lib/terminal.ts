@@ -1,8 +1,8 @@
 // Helper functions for terminal instances
 
-import { createId } from "@paralleldrive/cuid2";
-import { Terminal } from "@xterm/xterm";
-import { Socket } from "socket.io-client";
+import { createId } from "@paralleldrive/cuid2"
+import { Terminal } from "@xterm/xterm"
+import { Socket } from "socket.io-client"
 
 export const createTerminal = ({
   setTerminals,
@@ -11,30 +11,33 @@ export const createTerminal = ({
   command,
   socket,
 }: {
-  setTerminals: React.Dispatch<React.SetStateAction<{
-    id: string;
-    terminal: Terminal | null;
-}[]>>;
-  setActiveTerminalId: React.Dispatch<React.SetStateAction<string>>;
-  setCreatingTerminal: React.Dispatch<React.SetStateAction<boolean>>;
-  command?: string;
-  socket: Socket;
-
+  setTerminals: React.Dispatch<
+    React.SetStateAction<
+      {
+        id: string
+        terminal: Terminal | null
+      }[]
+    >
+  >
+  setActiveTerminalId: React.Dispatch<React.SetStateAction<string>>
+  setCreatingTerminal: React.Dispatch<React.SetStateAction<boolean>>
+  command?: string
+  socket: Socket
 }) => {
-  setCreatingTerminal(true);
-  const id = createId();
-  console.log("creating terminal, id:", id);
+  setCreatingTerminal(true)
+  const id = createId()
+  console.log("creating terminal, id:", id)
 
-  setTerminals((prev) => [...prev, { id, terminal: null }]);
-  setActiveTerminalId(id);
+  setTerminals((prev) => [...prev, { id, terminal: null }])
+  setActiveTerminalId(id)
 
   setTimeout(() => {
     socket.emit("createTerminal", id, () => {
-      setCreatingTerminal(false);
-      if (command) socket.emit("terminalData", id, command + "\n");
-    });
-  }, 1000);
-};
+      setCreatingTerminal(false)
+      if (command) socket.emit("terminalData", id, command + "\n")
+    })
+  }, 1000)
+}
 
 export const closeTerminal = ({
   term,
@@ -44,32 +47,36 @@ export const closeTerminal = ({
   setClosingTerminal,
   socket,
   activeTerminalId,
-} : {
-  term: { 
-    id: string; 
-    terminal: Terminal | null 
+}: {
+  term: {
+    id: string
+    terminal: Terminal | null
   }
-  terminals: { 
-    id: string; 
-    terminal: Terminal | null 
+  terminals: {
+    id: string
+    terminal: Terminal | null
   }[]
-  setTerminals: React.Dispatch<React.SetStateAction<{ 
-    id: string; 
-    terminal: Terminal | null 
-  }[]>>
+  setTerminals: React.Dispatch<
+    React.SetStateAction<
+      {
+        id: string
+        terminal: Terminal | null
+      }[]
+    >
+  >
   setActiveTerminalId: React.Dispatch<React.SetStateAction<string>>
   setClosingTerminal: React.Dispatch<React.SetStateAction<string>>
   socket: Socket
   activeTerminalId: string
 }) => {
-  const numTerminals = terminals.length;
-  const index = terminals.findIndex((t) => t.id === term.id);
-  if (index === -1) return;
+  const numTerminals = terminals.length
+  const index = terminals.findIndex((t) => t.id === term.id)
+  if (index === -1) return
 
-  setClosingTerminal(term.id);
+  setClosingTerminal(term.id)
 
   socket.emit("closeTerminal", term.id, () => {
-    setClosingTerminal("");
+    setClosingTerminal("")
 
     const nextId =
       activeTerminalId === term.id
@@ -78,17 +85,17 @@ export const closeTerminal = ({
           : index < numTerminals - 1
           ? terminals[index + 1].id
           : terminals[index - 1].id
-        : activeTerminalId;
+        : activeTerminalId
 
-    setTerminals((prev) => prev.filter((t) => t.id !== term.id));
+    setTerminals((prev) => prev.filter((t) => t.id !== term.id))
 
     if (!nextId) {
-      setActiveTerminalId("");
+      setActiveTerminalId("")
     } else {
-      const nextTerminal = terminals.find((t) => t.id === nextId);
+      const nextTerminal = terminals.find((t) => t.id === nextId)
       if (nextTerminal) {
-        setActiveTerminalId(nextTerminal.id);
+        setActiveTerminalId(nextTerminal.id)
       }
     }
-  });
-};
+  })
+}

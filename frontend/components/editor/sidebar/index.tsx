@@ -1,28 +1,20 @@
 "use client"
 
-import {
-  FilePlus,
-  FolderPlus,
-  Loader2,
-  MonitorPlay,
-  Search,
-  Sparkles,
-} from "lucide-react"
+import { Sandbox, TFile, TFolder, TTab } from "@/lib/types"
+import { FilePlus, FolderPlus, MessageSquareMore, Sparkles } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Socket } from "socket.io-client"
 import SidebarFile from "./file"
 import SidebarFolder from "./folder"
-import { Sandbox, TFile, TFolder, TTab } from "@/lib/types"
-import { useEffect, useMemo, useRef, useState } from "react"
 import New from "./new"
-import { Socket } from "socket.io-client"
-import { Switch } from "@/components/ui/switch"
 
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { sortFileExplorer } from "@/lib/utils"
 import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter"
-import Button from "@/components/ui/customButton"
-import { Skeleton } from "@/components/ui/skeleton"
-import { sortFileExplorer } from "@/lib/utils"
 
 export default function Sidebar({
   sandboxData,
@@ -107,9 +99,9 @@ export default function Sidebar({
   }, [])
 
   return (
-    <div className="h-full w-56 select-none flex flex-col text-sm items-start justify-between p-2">
-      <div className="w-full flex flex-col items-start">
-        <div className="flex w-full items-center justify-between h-8 mb-1 ">
+    <div className="h-full w-56 select-none flex flex-col text-sm">
+      <div className="flex-grow overflow-auto p-2 pb-[84px]">
+        <div className="flex w-full items-center justify-between h-8 mb-1">
           <div className="text-muted-foreground">Explorer</div>
           <div className="flex space-x-1">
             <button
@@ -185,10 +177,37 @@ export default function Sidebar({
           )}
         </div>
       </div>
-      <div className="w-full space-y-4">
-        {/* <Button className="w-full">
-          <MonitorPlay className="w-4 h-4 mr-2" /> Run
-        </Button> */}
+      <div className="fixed bottom-0 w-48 flex flex-col p-2 bg-background">
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-sm text-muted-foreground font-normal h-8 px-2 mb-2"
+          disabled
+          aria-disabled="true"
+          style={{ opacity: 1 }}
+        >
+          <Sparkles className="h-4 w-4 mr-2 text-indigo-500 opacity-70" />
+          Copilot
+          <div className="ml-auto">
+            <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+              <span className="text-xs">⌘</span>G
+            </kbd>
+          </div>
+        </Button>
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-sm text-muted-foreground font-normal h-8 px-2 mb-2"
+          disabled
+          aria-disabled="true"
+          style={{ opacity: 1 }}
+        >
+          <MessageSquareMore className="h-4 w-4 mr-2 text-indigo-500 opacity-70" />
+          AI Chat
+          <div className="ml-auto">
+            <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+              <span className="text-xs">⌘</span>L
+            </kbd>
+          </div>
+        </Button>
       </div>
     </div>
   )
