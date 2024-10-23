@@ -3,16 +3,14 @@
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
-import Image from "next/image"
-import { useState, useCallback, useEffect, useMemo } from "react"
-import { set, z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
+import Image from "next/image"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
+import { z } from "zod"
 
 import {
   Form,
@@ -31,23 +29,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useUser } from "@clerk/nextjs"
 import { createSandbox } from "@/lib/actions"
-import { useRouter } from "next/navigation"
-import {
-  Loader2,
-  ChevronRight,
-  ChevronLeft,
-  Search,
-  SlashSquare,
-} from "lucide-react"
-import { Button } from "../ui/button"
 import { projectTemplates } from "@/lib/data"
+import { useUser } from "@clerk/nextjs"
+import { ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Button } from "../ui/button"
 
-import useEmblaCarousel from "embla-carousel-react"
-import type { EmblaCarouselType } from "embla-carousel"
-import { WheelGesturesPlugin } from "embla-carousel-wheel-gestures"
 import { cn } from "@/lib/utils"
+import type { EmblaCarouselType } from "embla-carousel"
+import useEmblaCarousel from "embla-carousel-react"
+import { WheelGesturesPlugin } from "embla-carousel-wheel-gestures"
 const formSchema = z.object({
   name: z
     .string()
@@ -296,7 +288,7 @@ function SearchInput({
     <form {...{ onSubmit }} className="w-40 h-8 ">
       <label
         htmlFor="template-search"
-        className="flex gap-2 rounded-sm transition-colors bg-[#2e2e2e] border border-[--s-color] [--s-color:hsl(var(--muted-foreground))]  focus-within:[--s-color:#fff]  h-full items-center px-2"
+        className="flex gap-2 rounded-sm transition-colors bg-gray-100 dark:bg-[#2e2e2e] border border-[--s-color] [--s-color:hsl(var(--muted-foreground))]  focus-within:[--s-color:#fff]  h-full items-center px-2"
       >
         <Search className="size-4 text-[--s-color] transition-colors" />
         <input
