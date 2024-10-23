@@ -298,7 +298,7 @@ function SearchInput({
           placeholder="Search templates"
           value={value}
           onChange={(e) => onValueChange?.(e.target.value)}
-          className="bg-transparent placeholder:text-muted-foreground text-white w-full focus:outline-none text-xs"
+          className="bg-transparent placeholder:text-muted-foreground w-full focus:outline-none text-xs"
         />
       </label>
     </form>
