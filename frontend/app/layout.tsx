@@ -1,7 +1,7 @@
-import { ThemeProvider } from "@/components/layout/themeProvider"
 import { Toaster } from "@/components/ui/sonner"
+import { ThemeProvider } from "@/components/ui/theme-provider"
 import { PreviewProvider } from "@/context/PreviewContext"
-import { SocketProvider } from "@/context/SocketContext"
+import { SocketProvider } from '@/context/SocketContext'
 import { ClerkProvider } from "@clerk/nextjs"
 import { Analytics } from "@vercel/analytics/react"
 import { GeistMono } from "geist/font/mono"
@@ -25,8 +25,7 @@ export default function RootLayout({
         <body>
           <ThemeProvider
             attribute="class"
-            defaultTheme="dark"
-            forcedTheme="dark"
+            defaultTheme="system"
             disableTransitionOnChange
           >
             <SocketProvider>

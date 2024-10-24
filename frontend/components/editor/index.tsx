@@ -39,6 +39,7 @@ import {
   Sparkles,
   TerminalSquare,
 } from "lucide-react"
+import { useTheme } from "next-themes"
 import React from "react"
 import { ImperativePanelHandle } from "react-resizable-panels"
 import { Button } from "../ui/button"
@@ -61,7 +62,8 @@ export default function CodeEditor({
 }) {
   //SocketContext functions and effects
   const { socket, setUserAndSandboxId } = useSocket()
-
+  // theme
+  const { theme } = useTheme()
   useEffect(() => {
     // Ensure userData.id and sandboxData.id are available before attempting to connect
     if (userData.id && sandboxData.id) {
@@ -105,6 +107,7 @@ export default function CodeEditor({
 
   // Editor state
   const [editorLanguage, setEditorLanguage] = useState("plaintext")
+  console.log("editor language: ",editorLanguage)
   const [cursorLine, setCursorLine] = useState(0)
   const [editorRef, setEditorRef] =
     useState<monaco.editor.IStandaloneCodeEditor>()
@@ -1118,7 +1121,7 @@ export default function CodeEditor({
                           fixedOverflowWidgets: true,
                           fontFamily: "var(--font-geist-mono)",
                         }}
-                        theme="vs-dark"
+                        theme={theme === "light" ? "vs" : "vs-dark"}
                         value={activeFileContent}
                       />
                     </>
@@ -1148,7 +1151,7 @@ export default function CodeEditor({
                     defaultSize={isPreviewCollapsed ? 4 : 20}
                     minSize={25}
                     collapsedSize={isHorizontalLayout ? 20 : 4}
-                    className="p-2 flex flex-col"
+                    className="p-2 flex flex-col gap-2"
                     collapsible
                     onCollapse={() => setIsPreviewCollapsed(true)}
                     onExpand={() => setIsPreviewCollapsed(false)}

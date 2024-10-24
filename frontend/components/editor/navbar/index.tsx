@@ -2,6 +2,7 @@
 
 import Logo from "@/assets/logo.svg"
 import { Button } from "@/components/ui/button"
+import { ThemeSwitcher } from "@/components/ui/theme-switcher"
 import UserButton from "@/components/ui/userButton"
 import { Sandbox, User } from "@/lib/types"
 import { Pencil, Users } from "lucide-react"
@@ -79,6 +80,7 @@ export default function Navbar({
               </Button>
             </>
           ) : null}
+          <ThemeSwitcher />
           <UserButton userData={userData} />
         </div>
       </div>

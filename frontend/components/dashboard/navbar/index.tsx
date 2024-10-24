@@ -1,4 +1,5 @@
 import Logo from "@/assets/logo.svg"
+import { ThemeSwitcher } from "@/components/ui/theme-switcher"
 import { User } from "@/lib/types"
 import Image from "next/image"
 import Link from "next/link"
@@ -19,6 +20,7 @@ export default function DashboardNavbar({ userData }: { userData: User }) {
       </div>
       <div className="flex items-center space-x-4">
         <DashboardNavbarSearch />
+        <ThemeSwitcher />
         <UserButton userData={userData} />
       </div>
     </div>
