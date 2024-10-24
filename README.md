@@ -1,6 +1,6 @@
 # GitWit Sandbox 📦🪄
 
-<img width="1799" alt="GitWit Sandbox Demo" src="https://pouch.jumpshare.com/preview/4_zO5hR_VRClZEtjZl7OntdZrjuFdhRlMAJy3Jw4ntkwJGI2OeVV97_iyKZy5HBznvmYQJo0fFE8KdtuI_FtcPOlMiOLCJcZnR8kCTDAgEI" />
+![2024-10-2307 17 42-ezgif com-resize](https://github.com/user-attachments/assets/a4057129-81a7-4a31-a093-c8bc8189ae72)
 
 Sandbox is an open-source cloud-based code editing environment with custom AI code generation, live preview, real-time collaboration and AI chat.
 
