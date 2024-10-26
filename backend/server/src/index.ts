@@ -8,7 +8,7 @@ import { AIWorker } from "./AIWorker"
 
 import { ConnectionManager } from "./ConnectionManager"
 import { DokkuClient } from "./DokkuClient"
-import { Sandbox } from "./SandboxManager"
+import { Sandbox } from "./Sandbox"
 import { SecureGitClient } from "./SecureGitClient"
 import { socketAuth } from "./socketAuth"; // Import the new socketAuth middleware
 import { TFile, TFolder } from "./types"
@@ -109,13 +109,13 @@ io.on("connection", async (socket) => {
 
     try {
       // Create or retrieve the sandbox manager for the given sandbox ID
-      const sandboxManager = sandboxes[data.sandboxId] ?? new Sandbox(
+      const sandbox = sandboxes[data.sandboxId] ?? new Sandbox(
         data.sandboxId,
         {
           aiWorker, dokkuClient, gitClient,
         }
       )
-      sandboxes[data.sandboxId] = sandboxManager
+      sandboxes[data.sandboxId] = sandbox
 
       // This callback recieves an update when the file list changes, and notifies all relevant connections.
       const sendFileNotifications = (files: (TFolder | TFile)[]) => {
@@ -126,13 +126,13 @@ io.on("connection", async (socket) => {
 
       // Initialize the sandbox container
       // The file manager and terminal managers will be set up if they have been closed
-      await sandboxManager.initialize(sendFileNotifications)
-      socket.emit("loaded", sandboxManager.fileManager?.files)
+      await sandbox.initialize(sendFileNotifications)
+      socket.emit("loaded", sandbox.fileManager?.files)
 
       // Register event handlers for the sandbox
       // For each event handler, listen on the socket for that event
       // Pass connection-specific information to the handlers
-      Object.entries(sandboxManager.handlers({
+      Object.entries(sandbox.handlers({
         userId: data.userId,
         isOwner: data.isOwner,
         socket
@@ -156,7 +156,7 @@ io.on("connection", async (socket) => {
           // If the owner has disconnected from all sockets, close open terminals and file watchers.o
           // The sandbox itself will timeout after the heartbeat stops.
           if (data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
-            await sandboxManager.disconnect()
+            await sandbox.disconnect()
             socket.broadcast.emit(
               "disableAccess",
               "The sandbox owner has disconnected."
