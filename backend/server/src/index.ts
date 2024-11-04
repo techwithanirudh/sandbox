@@ -1,42 +1,39 @@
 import cors from "cors"
 import dotenv from "dotenv"
-import { Sandbox } from "e2b"
 import express, { Express } from "express"
 import fs from "fs"
 import { createServer } from "http"
-import { Server } from "socket.io"
-import { z } from "zod"
+import { Server, Socket } from "socket.io"
 import { AIWorker } from "./AIWorker"
+
+import { ConnectionManager } from "./ConnectionManager"
 import { DokkuClient } from "./DokkuClient"
-import { FileManager, SandboxFiles } from "./FileManager"
-import {
-  createFileRL,
-  createFolderRL,
-  deleteFileRL,
-  renameFileRL,
-  saveFileRL,
-} from "./ratelimit"
+import { Sandbox } from "./Sandbox"
 import { SecureGitClient } from "./SecureGitClient"
-import { TerminalManager } from "./TerminalManager"
-import { User } from "./types"
-import { LockManager } from "./utils"
+import { socketAuth } from "./socketAuth"; // Import the new socketAuth middleware
+import { TFile, TFolder } from "./types"
+
+// Log errors and send a notification to the client
+export const handleErrors = (message: string, error: any, socket: Socket) => {
+  console.error(message, error);
+  socket.emit("error", `${message} ${error.message ?? error}`);
+};
 
 // Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error)
   // Do not exit the process
-  // You can add additional logging or recovery logic here
 })
 
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason)
   // Do not exit the process
-  // You can also handle the rejected promise here if needed
 })
 
-// The amount of time in ms that a container will stay alive without a hearbeat.
-const CONTAINER_TIMEOUT = 120_000
+// Initialize containers and managers
+const connections = new ConnectionManager()
+const sandboxes: Record<string, Sandbox> = {}
 
 // Load environment variables
 dotenv.config()
@@ -48,118 +45,39 @@ app.use(cors())
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
+    origin: "*", // Allow connections from any origin
   },
 })
 
-// Check if the sandbox owner is connected
-function isOwnerConnected(sandboxId: string): boolean {
-  return (connections[sandboxId] ?? 0) > 0
-}
-
-// Extract port number from a string
-function extractPortNumber(inputString: string): number | null {
-  const cleanedString = inputString.replace(/\x1B\[[0-9;]*m/g, "")
-  const regex = /http:\/\/localhost:(\d+)/
-  const match = cleanedString.match(regex)
-  return match ? parseInt(match[1]) : null
-}
-
-// Initialize containers and managers
-const containers: Record<string, Sandbox> = {}
-const connections: Record<string, number> = {}
-const fileManagers: Record<string, FileManager> = {}
-const terminalManagers: Record<string, TerminalManager> = {}
-
 // Middleware for socket authentication
-io.use(async (socket, next) => {
-  // Define the schema for handshake query validation
-  const handshakeSchema = z.object({
-    userId: z.string(),
-    sandboxId: z.string(),
-    EIO: z.string(),
-    transport: z.string(),
-  })
-
-  const q = socket.handshake.query
-  const parseQuery = handshakeSchema.safeParse(q)
-
-  // Check if the query is valid according to the schema
-  if (!parseQuery.success) {
-    next(new Error("Invalid request."))
-    return
-  }
-
-  const { sandboxId, userId } = parseQuery.data
-  // Fetch user data from the database
-  const dbUser = await fetch(
-    `${process.env.DATABASE_WORKER_URL}/api/user?id=${userId}`,
-    {
-      headers: {
-        Authorization: `${process.env.WORKERS_KEY}`,
-      },
-    }
-  )
-  const dbUserJSON = (await dbUser.json()) as User
-
-  // Check if user data was retrieved successfully
-  if (!dbUserJSON) {
-    next(new Error("DB error."))
-    return
-  }
-
-  // Check if the user owns the sandbox or has shared access
-  const sandbox = dbUserJSON.sandbox.find((s) => s.id === sandboxId)
-  const sharedSandboxes = dbUserJSON.usersToSandboxes.find(
-    (uts) => uts.sandboxId === sandboxId
-  )
-
-  // If user doesn't own or have shared access to the sandbox, deny access
-  if (!sandbox && !sharedSandboxes) {
-    next(new Error("Invalid credentials."))
-    return
-  }
-
-  // Set socket data with user information
-  socket.data = {
-    userId,
-    sandboxId: sandboxId,
-    isOwner: sandbox !== undefined,
-  }
-
-  // Allow the connection
-  next()
-})
-
-// Initialize lock manager
-const lockManager = new LockManager()
+io.use(socketAuth) // Use the new socketAuth middleware
 
 // Check for required environment variables
 if (!process.env.DOKKU_HOST)
-  console.error("Environment variable DOKKU_HOST is not defined")
+  console.warn("Environment variable DOKKU_HOST is not defined")
 if (!process.env.DOKKU_USERNAME)
-  console.error("Environment variable DOKKU_USERNAME is not defined")
+  console.warn("Environment variable DOKKU_USERNAME is not defined")
 if (!process.env.DOKKU_KEY)
-  console.error("Environment variable DOKKU_KEY is not defined")
+  console.warn("Environment variable DOKKU_KEY is not defined")
 
 // Initialize Dokku client
-const client =
+const dokkuClient =
   process.env.DOKKU_HOST && process.env.DOKKU_KEY && process.env.DOKKU_USERNAME
     ? new DokkuClient({
-        host: process.env.DOKKU_HOST,
-        username: process.env.DOKKU_USERNAME,
-        privateKey: fs.readFileSync(process.env.DOKKU_KEY),
-      })
+      host: process.env.DOKKU_HOST,
+      username: process.env.DOKKU_USERNAME,
+      privateKey: fs.readFileSync(process.env.DOKKU_KEY),
+    })
     : null
-client?.connect()
+dokkuClient?.connect()
 
 // Initialize Git client used to deploy Dokku apps
-const git =
+const gitClient =
   process.env.DOKKU_HOST && process.env.DOKKU_KEY
     ? new SecureGitClient(
-        `dokku@${process.env.DOKKU_HOST}`,
-        process.env.DOKKU_KEY
-      )
+      `dokku@${process.env.DOKKU_HOST}`,
+      process.env.DOKKU_KEY
+    )
     : null
 
 // Add this near the top of the file, after other initializations
@@ -170,353 +88,91 @@ const aiWorker = new AIWorker(
   process.env.WORKERS_KEY!
 )
 
-// Handle socket connections
+// Handle a client connecting to the server
 io.on("connection", async (socket) => {
   try {
+    // This data comes is added by our authentication middleware
     const data = socket.data as {
       userId: string
       sandboxId: string
       isOwner: boolean
     }
 
-    // Handle connection based on user type (owner or not)
-    if (data.isOwner) {
-      connections[data.sandboxId] = (connections[data.sandboxId] ?? 0) + 1
-    } else {
-      if (!isOwnerConnected(data.sandboxId)) {
-        socket.emit("disableAccess", "The sandbox owner is not connected.")
-        return
-      }
+    // Register the connection
+    connections.addConnectionForSandbox(socket, data.sandboxId, data.isOwner)
+
+    // Disable access unless the sandbox owner is connected
+    if (!data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
+      socket.emit("disableAccess", "The sandbox owner is not connected.")
+      return
     }
 
-    // Create or retrieve container
-    const createdContainer = await lockManager.acquireLock(
-      data.sandboxId,
-      async () => {
+    try {
+      // Create or retrieve the sandbox manager for the given sandbox ID
+      const sandbox = sandboxes[data.sandboxId] ?? new Sandbox(
+        data.sandboxId,
+        {
+          aiWorker, dokkuClient, gitClient,
+        }
+      )
+      sandboxes[data.sandboxId] = sandbox
+
+      // This callback recieves an update when the file list changes, and notifies all relevant connections.
+      const sendFileNotifications = (files: (TFolder | TFile)[]) => {
+        connections.connectionsForSandbox(data.sandboxId).forEach((socket: Socket) => {
+          socket.emit("loaded", files);
+        });
+      };
+
+      // Initialize the sandbox container
+      // The file manager and terminal managers will be set up if they have been closed
+      await sandbox.initialize(sendFileNotifications)
+      socket.emit("loaded", sandbox.fileManager?.files)
+
+      // Register event handlers for the sandbox
+      // For each event handler, listen on the socket for that event
+      // Pass connection-specific information to the handlers
+      Object.entries(sandbox.handlers({
+        userId: data.userId,
+        isOwner: data.isOwner,
+        socket
+      })).forEach(([event, handler]) => {
+        socket.on(event, async (options: any, callback?: (response: any) => void) => {
+          try {
+            const result = await handler(options)
+            callback?.(result);
+          } catch (e: any) {
+            handleErrors(`Error processing event "${event}":`, e, socket);
+          }
+        });
+      });
+
+      // Handle disconnection event
+      socket.on("disconnect", async () => {
         try {
-          // Start a new container if the container doesn't exist or it timed out.
-          if (
-            !containers[data.sandboxId] ||
-            !(await containers[data.sandboxId].isRunning())
-          ) {
-            containers[data.sandboxId] = await Sandbox.create({
-              timeoutMs: CONTAINER_TIMEOUT,
-            })
-            console.log("Created container ", data.sandboxId)
-            return true
+          // Deregister the connection
+          connections.removeConnectionForSandbox(socket, data.sandboxId, data.isOwner)
+
+          // If the owner has disconnected from all sockets, close open terminals and file watchers.o
+          // The sandbox itself will timeout after the heartbeat stops.
+          if (data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
+            await sandbox.disconnect()
+            socket.broadcast.emit(
+              "disableAccess",
+              "The sandbox owner has disconnected."
+            )
           }
         } catch (e: any) {
-          console.error(`Error creating container ${data.sandboxId}:`, e)
-          io.emit("error", `Error: container creation. ${e.message ?? e}`)
+          handleErrors("Error disconnecting:", e, socket);
         }
-      }
-    )
+      })
 
-    // Function to send loaded event
-    const sendLoadedEvent = (files: SandboxFiles) => {
-      socket.emit("loaded", files.files)
+    } catch (e: any) {
+      handleErrors(`Error initializing sandbox ${data.sandboxId}:`, e, socket);
     }
 
-    // Initialize file and terminal managers if container was created
-    if (createdContainer) {
-      fileManagers[data.sandboxId] = new FileManager(
-        data.sandboxId,
-        containers[data.sandboxId],
-        sendLoadedEvent
-      )
-      await fileManagers[data.sandboxId].initialize()
-      terminalManagers[data.sandboxId] = new TerminalManager(
-        containers[data.sandboxId]
-      )
-    }
-
-    const fileManager = fileManagers[data.sandboxId]
-    const terminalManager = terminalManagers[data.sandboxId]
-
-    // Load file list from the file manager into the editor
-    sendLoadedEvent(fileManager.sandboxFiles)
-
-    // Handle various socket events (heartbeat, file operations, terminal operations, etc.)
-    socket.on("heartbeat", async () => {
-      try {
-        // This keeps the container alive for another CONTAINER_TIMEOUT seconds.
-        // The E2B docs are unclear, but the timeout is relative to the time of this method call.
-        await containers[data.sandboxId].setTimeout(CONTAINER_TIMEOUT)
-      } catch (e: any) {
-        console.error("Error setting timeout:", e)
-        io.emit("error", `Error: set timeout. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to get file content
-    socket.on("getFile", async (fileId: string, callback) => {
-      try {
-        const fileContent = await fileManager.getFile(fileId)
-        callback(fileContent)
-      } catch (e: any) {
-        console.error("Error getting file:", e)
-        io.emit("error", `Error: get file. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to get folder contents
-    socket.on("getFolder", async (folderId: string, callback) => {
-      try {
-        const files = await fileManager.getFolder(folderId)
-        callback(files)
-      } catch (e: any) {
-        console.error("Error getting folder:", e)
-        io.emit("error", `Error: get folder. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to save file
-    socket.on("saveFile", async (fileId: string, body: string) => {
-      try {
-        await saveFileRL.consume(data.userId, 1)
-        await fileManager.saveFile(fileId, body)
-      } catch (e: any) {
-        console.error("Error saving file:", e)
-        io.emit("error", `Error: file saving. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to move file
-    socket.on(
-      "moveFile",
-      async (fileId: string, folderId: string, callback) => {
-        try {
-          const newFiles = await fileManager.moveFile(fileId, folderId)
-          callback(newFiles)
-        } catch (e: any) {
-          console.error("Error moving file:", e)
-          io.emit("error", `Error: file moving. ${e.message ?? e}`)
-        }
-      }
-    )
-
-    interface CallbackResponse {
-      success: boolean
-      apps?: string[]
-      message?: string
-    }
-
-    // Handle request to list apps
-    socket.on(
-      "list",
-      async (callback: (response: CallbackResponse) => void) => {
-        console.log("Retrieving apps list...")
-        try {
-          if (!client)
-            throw Error("Failed to retrieve apps list: No Dokku client")
-          callback({
-            success: true,
-            apps: await client.listApps(),
-          })
-        } catch (error) {
-          callback({
-            success: false,
-            message: "Failed to retrieve apps list",
-          })
-        }
-      }
-    )
-
-    // Handle request to deploy project
-    socket.on(
-      "deploy",
-      async (callback: (response: CallbackResponse) => void) => {
-        try {
-          // Push the project files to the Dokku server
-          console.log("Deploying project ${data.sandboxId}...")
-          if (!git) throw Error("Failed to retrieve apps list: No git client")
-          // Remove the /project/[id]/ component of each file path:
-          const fixedFilePaths = fileManager.sandboxFiles.fileData.map(
-            (file) => {
-              return {
-                ...file,
-                id: file.id.split("/").slice(2).join("/"),
-              }
-            }
-          )
-          // Push all files to Dokku.
-          await git.pushFiles(fixedFilePaths, data.sandboxId)
-          callback({
-            success: true,
-          })
-        } catch (error) {
-          callback({
-            success: false,
-            message: "Failed to deploy project: " + error,
-          })
-        }
-      }
-    )
-
-    // Handle request to create a new file
-    socket.on("createFile", async (name: string, callback) => {
-      try {
-        await createFileRL.consume(data.userId, 1)
-        const success = await fileManager.createFile(name)
-        callback({ success })
-      } catch (e: any) {
-        console.error("Error creating file:", e)
-        io.emit("error", `Error: file creation. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to create a new folder
-    socket.on("createFolder", async (name: string, callback) => {
-      try {
-        await createFolderRL.consume(data.userId, 1)
-        await fileManager.createFolder(name)
-        callback()
-      } catch (e: any) {
-        console.error("Error creating folder:", e)
-        io.emit("error", `Error: folder creation. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to rename a file
-    socket.on("renameFile", async (fileId: string, newName: string) => {
-      try {
-        await renameFileRL.consume(data.userId, 1)
-        await fileManager.renameFile(fileId, newName)
-      } catch (e: any) {
-        console.error("Error renaming file:", e)
-        io.emit("error", `Error: file renaming. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to delete a file
-    socket.on("deleteFile", async (fileId: string, callback) => {
-      try {
-        await deleteFileRL.consume(data.userId, 1)
-        const newFiles = await fileManager.deleteFile(fileId)
-        callback(newFiles)
-      } catch (e: any) {
-        console.error("Error deleting file:", e)
-        io.emit("error", `Error: file deletion. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to delete a folder
-    socket.on("deleteFolder", async (folderId: string, callback) => {
-      try {
-        const newFiles = await fileManager.deleteFolder(folderId)
-        callback(newFiles)
-      } catch (e: any) {
-        console.error("Error deleting folder:", e)
-        io.emit("error", `Error: folder deletion. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to create a new terminal
-    socket.on("createTerminal", async (id: string, callback) => {
-      try {
-        await lockManager.acquireLock(data.sandboxId, async () => {
-          await terminalManager.createTerminal(id, (responseString: string) => {
-            io.emit("terminalResponse", { id, data: responseString })
-            const port = extractPortNumber(responseString)
-            if (port) {
-              io.emit(
-                "previewURL",
-                "https://" + containers[data.sandboxId].getHost(port)
-              )
-            }
-          })
-        })
-        callback()
-      } catch (e: any) {
-        console.error(`Error creating terminal ${id}:`, e)
-        io.emit("error", `Error: terminal creation. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to resize terminal
-    socket.on(
-      "resizeTerminal",
-      (dimensions: { cols: number; rows: number }) => {
-        try {
-          terminalManager.resizeTerminal(dimensions)
-        } catch (e: any) {
-          console.error("Error resizing terminal:", e)
-          io.emit("error", `Error: terminal resizing. ${e.message ?? e}`)
-        }
-      }
-    )
-
-    // Handle terminal input data
-    socket.on("terminalData", async (id: string, data: string) => {
-      try {
-        await terminalManager.sendTerminalData(id, data)
-      } catch (e: any) {
-        console.error("Error writing to terminal:", e)
-        io.emit("error", `Error: writing to terminal. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to close terminal
-    socket.on("closeTerminal", async (id: string, callback) => {
-      try {
-        await terminalManager.closeTerminal(id)
-        callback()
-      } catch (e: any) {
-        console.error("Error closing terminal:", e)
-        io.emit("error", `Error: closing terminal. ${e.message ?? e}`)
-      }
-    })
-
-    // Handle request to generate code
-    socket.on(
-      "generateCode",
-      async (
-        fileName: string,
-        code: string,
-        line: number,
-        instructions: string,
-        callback
-      ) => {
-        try {
-          const result = await aiWorker.generateCode(
-            data.userId,
-            fileName,
-            code,
-            line,
-            instructions
-          )
-          callback(result)
-        } catch (e: any) {
-          console.error("Error generating code:", e)
-          io.emit("error", `Error: code generation. ${e.message ?? e}`)
-        }
-      }
-    )
-
-    // Handle socket disconnection
-    socket.on("disconnect", async () => {
-      try {
-        if (data.isOwner) {
-          connections[data.sandboxId]--
-        }
-
-        await terminalManager.closeAllTerminals()
-        await fileManager.closeWatchers()
-
-        if (data.isOwner && connections[data.sandboxId] <= 0) {
-          socket.broadcast.emit(
-            "disableAccess",
-            "The sandbox owner has disconnected."
-          )
-        }
-      } catch (e: any) {
-        console.log("Error disconnecting:", e)
-        io.emit("error", `Error: disconnecting. ${e.message ?? e}`)
-      }
-    })
   } catch (e: any) {
-    console.error("Error connecting:", e)
-    io.emit("error", `Error: connection. ${e.message ?? e}`)
+    handleErrors("Error connecting:", e, socket);
   }
 })
 

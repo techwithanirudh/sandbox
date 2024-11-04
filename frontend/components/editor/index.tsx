@@ -91,6 +91,7 @@ export default function CodeEditor({
 
   // Layout state
   const [isHorizontalLayout, setIsHorizontalLayout] = useState(false)
+  const [previousLayout, setPreviousLayout] = useState(false)
 
   // AI Chat state
   const [isAIChatOpen, setIsAIChatOpen] = useState(false)
@@ -106,7 +107,6 @@ export default function CodeEditor({
 
   // Editor state
   const [editorLanguage, setEditorLanguage] = useState("plaintext")
-  console.log("editor language: ",editorLanguage)
   const [cursorLine, setCursorLine] = useState(0)
   const [editorRef, setEditorRef] =
     useState<monaco.editor.IStandaloneCodeEditor>()
@@ -206,7 +206,7 @@ export default function CodeEditor({
     )
     const fetchFileContent = (fileId: string): Promise<string> => {
       return new Promise((resolve) => {
-        socket?.emit("getFile", fileId, (content: string) => {
+        socket?.emit("getFile", { fileId }, (content: string) => {
           resolve(content)
         })
       })
@@ -531,7 +531,7 @@ export default function CodeEditor({
         )
         console.log(`Saving file...${activeFileId}`)
         console.log(`Saving file...${content}`)
-        socket?.emit("saveFile", activeFileId, content)
+        socket?.emit("saveFile", { fileId: activeFileId, body: content })
       }
     }, Number(process.env.FILE_SAVE_DEBOUNCE_DELAY) || 1000),
     [socket, fileContents]
@@ -548,12 +548,18 @@ export default function CodeEditor({
         setIsAIChatOpen((prev) => !prev)
       }
     }
+
     document.addEventListener("keydown", down)
+
+    // Added this line to prevent Monaco editor from handling Cmd/Ctrl+L
+    editorRef?.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyL, () => {
+      setIsAIChatOpen((prev) => !prev)
+    })
 
     return () => {
       document.removeEventListener("keydown", down)
     }
-  }, [activeFileId, tabs, debouncedSaveData, setIsAIChatOpen])
+  }, [activeFileId, tabs, debouncedSaveData, setIsAIChatOpen, editorRef])
 
   // Liveblocks live collaboration setup effect
   useEffect(() => {
@@ -642,7 +648,7 @@ export default function CodeEditor({
 
   // Socket event listener effect
   useEffect(() => {
-    const onConnect = () => {}
+    const onConnect = () => { }
 
     const onDisconnect = () => {
       setTerminals([])
@@ -708,7 +714,7 @@ export default function CodeEditor({
 
   // Debounced function to get file content
   const debouncedGetFile = (tabId: any, callback: any) => {
-    socket?.emit("getFile", tabId, callback)
+    socket?.emit("getFile", { fileId: tabId }, callback)
   } // 300ms debounce delay, adjust as needed
 
   const selectFile = (tab: TTab) => {
@@ -770,8 +776,8 @@ export default function CodeEditor({
         ? numTabs === 1
           ? null
           : index < numTabs - 1
-          ? tabs[index + 1].id
-          : tabs[index - 1].id
+            ? tabs[index + 1].id
+            : tabs[index - 1].id
         : activeFileId
 
     setTabs((prev) => prev.filter((t) => t.id !== id))
@@ -828,7 +834,7 @@ export default function CodeEditor({
       return false
     }
 
-    socket?.emit("renameFile", id, newName)
+    socket?.emit("renameFile", { fileId: id, newName })
     setTabs((prev) =>
       prev.map((tab) => (tab.id === id ? { ...tab, name: newName } : tab))
     )
@@ -837,7 +843,7 @@ export default function CodeEditor({
   }
 
   const handleDeleteFile = (file: TFile) => {
-    socket?.emit("deleteFile", file.id, (response: (TFolder | TFile)[]) => {
+    socket?.emit("deleteFile", { fileId: file.id }, (response: (TFolder | TFile)[]) => {
       setFiles(response)
     })
     closeTab(file.id)
@@ -847,11 +853,11 @@ export default function CodeEditor({
     setDeletingFolderId(folder.id)
     console.log("deleting folder", folder.id)
 
-    socket?.emit("getFolder", folder.id, (response: string[]) =>
+    socket?.emit("getFolder", { folderId: folder.id }, (response: string[]) =>
       closeTabs(response)
     )
 
-    socket?.emit("deleteFolder", folder.id, (response: (TFolder | TFile)[]) => {
+    socket?.emit("deleteFolder", { folderId: folder.id }, (response: (TFolder | TFile)[]) => {
       setFiles(response)
       setDeletingFolderId("")
     })
@@ -868,7 +874,24 @@ export default function CodeEditor({
   }
 
   const toggleLayout = () => {
-    setIsHorizontalLayout((prev) => !prev)
+    if (!isAIChatOpen) {
+      setIsHorizontalLayout((prev) => !prev)
+    }
+  }
+
+  // Add an effect to handle layout changes when AI chat is opened/closed
+  useEffect(() => {
+    if (isAIChatOpen) {
+      setPreviousLayout(isHorizontalLayout)
+      setIsHorizontalLayout(true)
+    } else {
+      setIsHorizontalLayout(previousLayout)
+    }
+  }, [isAIChatOpen])
+
+  // Modify the toggleAIChat function
+  const toggleAIChat = () => {
+    setIsAIChatOpen((prev) => !prev)
   }
 
   // On disabled access for shared users, show un-interactable loading placeholder + info modal
@@ -878,7 +901,7 @@ export default function CodeEditor({
         <DisableAccessModal
           message={disableAccess.message}
           open={disableAccess.isDisabled}
-          setOpen={() => {}}
+          setOpen={() => { }}
         />
         <Loading />
       </>
@@ -920,8 +943,8 @@ export default function CodeEditor({
                 code:
                   (isSelected && editorRef?.getSelection()
                     ? editorRef
-                        ?.getModel()
-                        ?.getValueInRange(editorRef?.getSelection()!)
+                      ?.getModel()
+                      ?.getValueInRange(editorRef?.getSelection()!)
                     : editorRef?.getValue()) ?? "",
                 line: generate.line,
               }}
@@ -1005,9 +1028,13 @@ export default function CodeEditor({
           setFiles={setFiles}
           addNew={(name, type) => addNew(name, type, setFiles, sandboxData)}
           deletingFolderId={deletingFolderId}
+          toggleAIChat={toggleAIChat}
+          isAIChatOpen={isAIChatOpen}
         />
         {/* Outer ResizablePanelGroup for main layout */}
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup
+          direction={isHorizontalLayout ? "horizontal" : "vertical"}
+        >
           {/* Left side: Editor and Preview/Terminal */}
           <ResizablePanel defaultSize={isAIChatOpen ? 80 : 100} minSize={50}>
             <ResizablePanelGroup
@@ -1049,62 +1076,62 @@ export default function CodeEditor({
                       </div>
                     </>
                   ) : // Note clerk.loaded is required here due to a bug: https://github.com/clerk/javascript/issues/1643
-                  clerk.loaded ? (
-                    <>
-                      {provider && userInfo ? (
-                        <Cursors yProvider={provider} userInfo={userInfo} />
-                      ) : null}
-                      <Editor
-                        height="100%"
-                        language={editorLanguage}
-                        beforeMount={handleEditorWillMount}
-                        onMount={handleEditorMount}
-                        onChange={(value) => {
-                          // If the new content is different from the cached content, update it
-                          if (value !== fileContents[activeFileId]) {
-                            setActiveFileContent(value ?? "") // Update the active file content
-                            // Mark the file as unsaved by setting 'saved' to false
-                            setTabs((prev) =>
-                              prev.map((tab) =>
-                                tab.id === activeFileId
-                                  ? { ...tab, saved: false }
-                                  : tab
+                    clerk.loaded ? (
+                      <>
+                        {provider && userInfo ? (
+                          <Cursors yProvider={provider} userInfo={userInfo} />
+                        ) : null}
+                        <Editor
+                          height="100%"
+                          language={editorLanguage}
+                          beforeMount={handleEditorWillMount}
+                          onMount={handleEditorMount}
+                          onChange={(value) => {
+                            // If the new content is different from the cached content, update it
+                            if (value !== fileContents[activeFileId]) {
+                              setActiveFileContent(value ?? "") // Update the active file content
+                              // Mark the file as unsaved by setting 'saved' to false
+                              setTabs((prev) =>
+                                prev.map((tab) =>
+                                  tab.id === activeFileId
+                                    ? { ...tab, saved: false }
+                                    : tab
+                                )
                               )
-                            )
-                          } else {
-                            // If the content matches the cached content, mark the file as saved
-                            setTabs((prev) =>
-                              prev.map((tab) =>
-                                tab.id === activeFileId
-                                  ? { ...tab, saved: true }
-                                  : tab
+                            } else {
+                              // If the content matches the cached content, mark the file as saved
+                              setTabs((prev) =>
+                                prev.map((tab) =>
+                                  tab.id === activeFileId
+                                    ? { ...tab, saved: true }
+                                    : tab
+                                )
                               )
-                            )
-                          }
-                        }}
-                        options={{
-                          tabSize: 2,
-                          minimap: {
-                            enabled: false,
-                          },
-                          padding: {
-                            bottom: 4,
-                            top: 4,
-                          },
-                          scrollBeyondLastLine: false,
-                          fixedOverflowWidgets: true,
-                          fontFamily: "var(--font-geist-mono)",
-                        }}
-                        theme={theme === "light" ? "vs" : "vs-dark"}
-                        value={activeFileContent}
-                      />
-                    </>
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xl font-medium text-muted-foreground/50 select-none">
-                      <Loader2 className="animate-spin w-6 h-6 mr-3" />
-                      Waiting for Clerk to load...
-                    </div>
-                  )}
+                            }
+                          }}
+                          options={{
+                            tabSize: 2,
+                            minimap: {
+                              enabled: false,
+                            },
+                            padding: {
+                              bottom: 4,
+                              top: 4,
+                            },
+                            scrollBeyondLastLine: false,
+                            fixedOverflowWidgets: true,
+                            fontFamily: "var(--font-geist-mono)",
+                          }}
+                          theme={theme === "light" ? "vs" : "vs-dark"}
+                          value={activeFileContent}
+                        />
+                      </>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xl font-medium text-muted-foreground/50 select-none">
+                        <Loader2 className="animate-spin w-6 h-6 mr-3" />
+                        Waiting for Clerk to load...
+                      </div>
+                    )}
                 </div>
               </ResizablePanel>
               <ResizableHandle />
@@ -1114,10 +1141,10 @@ export default function CodeEditor({
                     isAIChatOpen && isHorizontalLayout
                       ? "horizontal"
                       : isAIChatOpen
-                      ? "vertical"
-                      : isHorizontalLayout
-                      ? "horizontal"
-                      : "vertical"
+                        ? "vertical"
+                        : isHorizontalLayout
+                          ? "horizontal"
+                          : "vertical"
                   }
                 >
                   <ResizablePanel
@@ -1136,6 +1163,7 @@ export default function CodeEditor({
                         size="sm"
                         variant="ghost"
                         className="mr-2 border"
+                        disabled={isAIChatOpen}
                       >
                         {isHorizontalLayout ? (
                           <ArrowRightToLine className="w-4 h-4" />
@@ -1190,6 +1218,7 @@ export default function CodeEditor({
                     tabs.find((tab) => tab.id === activeFileId)?.name ||
                     "No file selected"
                   }
+                  onClose={toggleAIChat}
                 />
               </ResizablePanel>
             </>

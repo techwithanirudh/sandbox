@@ -288,7 +288,7 @@ function SearchInput({
     <form {...{ onSubmit }} className="w-40 h-8 ">
       <label
         htmlFor="template-search"
-        className="flex gap-2 rounded-sm transition-colors bg-gray-100 dark:bg-[#2e2e2e] border border-[--s-color] [--s-color:hsl(var(--muted-foreground))]  focus-within:[--s-color:#fff]  h-full items-center px-2"
+        className="flex gap-2 rounded-sm transition-colors bg-gray-100 dark:bg-[#2e2e2e] border border-[--s-color] [--s-color:hsl(var(--muted-foreground))]  focus-within:[--s-color:hsl(var(--muted-foreground),50%)]  h-full items-center px-2"
       >
         <Search className="size-4 text-[--s-color] transition-colors" />
         <input
@@ -298,7 +298,7 @@ function SearchInput({
           placeholder="Search templates"
           value={value}
           onChange={(e) => onValueChange?.(e.target.value)}
-          className="bg-transparent placeholder:text-muted-foreground text-white w-full focus:outline-none text-xs"
+          className="bg-transparent placeholder:text-muted-foreground w-full focus:outline-none text-xs"
         />
       </label>
     </form>
