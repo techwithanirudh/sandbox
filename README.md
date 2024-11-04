@@ -197,13 +197,48 @@ DOKKU_KEY=
 
 ## Creating Custom Templates
 
-We're working on a process whereby anyone can contribute a custom template that others can use in the Sandbox environment. The process includes:
+Anyone can contribute a custom template for integration in Sandbox. Since Sandbox is built on E2B, there is no limitation to what langauge or runtime a Sandbox can use.
 
-- Creating a [custom E2B Sandbox](https://e2b.dev/docs/sandbox-template) including the template files and dependencies
-- Creating a file to specify the run command (e.g. "npm run dev")
-- Testing the template with Dokku for deployment
+Currently there are four templates:
+- [jamesmurdza/dokku-reactjs-template](https://github.com/jamesmurdza/dokku-reactjs-template)
+- [jamesmurdza/dokku-vanillajs-template](https://github.com/jamesmurdza/dokku-vanillajs-template)
+- [jamesmurdza/dokku-nextjs-template](https://github.com/jamesmurdza/dokku-nextjs-template)
+- [jamesmurdza/dokku-streamlit-template](https://github.com/jamesmurdza/dokku-streamlit-template)
 
-Please reach out to us [on Discord](https://discord.gitwit.dev/) if you're interested in contributing.
+To create your own template, you can fork one of the above templates or start with a new blank repository. The template should have at least an `e2b.Dockerfile`, which is used by E2B to create the development environment. Optionally, a `Dockerfile` can be added which will be used to create the project build when it is deployed.
+
+To test the template, you must have an [E2B account](https://e2b.dev/) and the [E2B CLI tools](https://e2b.dev/docs/cli) installed. Then, in the Terminal, run:
+
+```
+e2b auth login
+```
+
+Then, navigate to your template directory and run the following command where **TEMPLATENAME** is the name of your template:
+
+```
+e2b template build -d e2b.Dockerfile -n TEMPLATENAME
+```
+
+Finally, to test your template run:
+
+```
+e2b sandbox spawn TEMPLATENAME
+cd project
+```
+
+You will see a URL in the form of `https://xxxxxxxxxxxxxxxxxxx.e2b-staging.com`.
+
+Now, run the command to start your development server.
+
+To see the running server, visit the public url `https://<PORT>-xxxxxxxxxxxxxxxxxxx.e2b-staging.com`.
+
+If you've done this and it works, let us know and we'll add your template to Sandbox! Please reach out to us [on Discord](https://discord.gitwit.dev/) with any questions or to submit your working template.
+
+Note: In the future, we will add a way to specify the command triggered by the "Run" button (e.g. "npm run dev").
+
+For more information, see:
+- [Custom E2B Sandboxes](https://e2b.dev/docs/sandbox-template)
+- [Dokku Builders](https://dokku.com/docs/deployment/builders/builder-management/)
 
 ## Contributing
 
