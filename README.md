@@ -11,7 +11,6 @@ For the latest updates, join our Discord server: [discord.gitwit.dev](https://di
 Notes:
 
 - Double check that whatever you change "SUPERDUPERSECRET" to, it's the same in all config files.
-- Right now we are loading project templates from a custom Cloudflare bucket which isn't covered in this guide, but that be updated/fixed very soon.
 
 ### 0. Requirements
 
