@@ -2,11 +2,11 @@
 
 import { deleteSandbox, updateSandbox } from "@/lib/actions"
 import { Sandbox } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import ProjectCard from "./projectCard"
-import { CanvasRevealEffect } from "./projectCard/revealEffect"
 
 const colors: { [key: string]: number[][] } = {
   react: [
@@ -28,26 +28,33 @@ export default function DashboardProjects({
 }) {
   const [deletingId, setDeletingId] = useState<string>("")
 
-  const onDelete = async (sandbox: Sandbox) => {
-    setDeletingId(sandbox.id)
-    toast(`Project ${sandbox.name} deleted.`)
-    await deleteSandbox(sandbox.id)
-  }
+  const onVisibilityChange = useMemo(
+    () => async (sandbox: Pick<Sandbox, "id" | "name" | "visibility">) => {
+      const newVisibility =
+        sandbox.visibility === "public" ? "private" : "public"
+      toast(`Project ${sandbox.name} is now ${newVisibility}.`)
+      await updateSandbox({
+        id: sandbox.id,
+        visibility: newVisibility,
+      })
+    },
+    []
+  )
+
+  const onDelete = useMemo(
+    () => async (sandbox: Pick<Sandbox, "id" | "name">) => {
+      setDeletingId(sandbox.id)
+      toast(`Project ${sandbox.name} deleted.`)
+      await deleteSandbox(sandbox.id)
+    },
+    []
+  )
 
   useEffect(() => {
     if (deletingId) {
       setDeletingId("")
     }
   }, [sandboxes])
-
-  const onVisibilityChange = async (sandbox: Sandbox) => {
-    const newVisibility = sandbox.visibility === "public" ? "private" : "public"
-    toast(`Project ${sandbox.name} is now ${newVisibility}.`)
-    await updateSandbox({
-      id: sandbox.id,
-      visibility: newVisibility,
-    })
-  }
 
   return (
     <div className="grow p-4 flex flex-col">
@@ -67,26 +74,20 @@ export default function DashboardProjects({
                 <Link
                   key={sandbox.id}
                   href={`/code/${sandbox.id}`}
-                  className={`${
+                  className={cn(
+                    "transition-all focus-visible:outline-none focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-ring rounded-lg",
                     deletingId === sandbox.id
                       ? "pointer-events-none opacity-50 cursor-events-none"
                       : "cursor-pointer"
-                  } transition-all focus-visible:outline-none focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-ring rounded-lg`}
+                  )}
                 >
                   <ProjectCard
-                    sandbox={sandbox}
                     onVisibilityChange={onVisibilityChange}
                     onDelete={onDelete}
                     deletingId={deletingId}
-                  >
-                    <CanvasRevealEffect
-                      animationSpeed={3}
-                      containerClassName="bg-black"
-                      colors={colors[sandbox.type]}
-                      dotSize={2}
-                    />
-                    <div className="absolute inset-0 [mask-image:radial-gradient(400px_at_center,white,transparent)] bg-background/75" />
-                  </ProjectCard>
+                    isAuthenticated
+                    {...sandbox}
+                  />
                 </Link>
               )
             })}

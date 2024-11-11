@@ -19,6 +19,8 @@ export type Sandbox = {
   visibility: "public" | "private"
   createdAt: Date
   userId: string
+  likeCount: number
+  viewCount: number
   usersToSandboxes: UsersToSandboxes[]
 }
 

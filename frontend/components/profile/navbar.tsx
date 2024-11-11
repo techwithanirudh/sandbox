@@ -1,14 +1,13 @@
 import Logo from "@/assets/logo.svg"
 import { ThemeSwitcher } from "@/components/ui/theme-switcher"
+import UserButton from "@/components/ui/userButton"
 import { User } from "@/lib/types"
 import Image from "next/image"
 import Link from "next/link"
-import UserButton from "../../ui/userButton"
-import DashboardNavbarSearch from "./search"
 
-export default function DashboardNavbar({ userData }: { userData: User }) {
+export default function ProfileNavbar({ userData }: { userData: User }) {
   return (
-    <div className=" py-2 px-4 w-full flex items-center justify-between border-b border-border">
+    <nav className=" py-2 px-4 w-full flex items-center justify-between border-b border-border">
       <div className="flex items-center space-x-4">
         <Link
           href="/"
@@ -19,10 +18,9 @@ export default function DashboardNavbar({ userData }: { userData: User }) {
         <div className="text-sm font-medium flex items-center">Sandbox</div>
       </div>
       <div className="flex items-center space-x-4">
-        <DashboardNavbarSearch />
         <ThemeSwitcher />
-        <UserButton userData={userData} />
+        {Boolean(userData?.id) ? <UserButton userData={userData} /> : null}
       </div>
-    </div>
+    </nav>
   )
 }

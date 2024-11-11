@@ -7,9 +7,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { MAX_FREE_GENERATION } from "@/lib/constant"
 import { User } from "@/lib/types"
 import { useClerk } from "@clerk/nextjs"
-import { LogOut, Sparkles } from "lucide-react"
+import {
+  LayoutDashboard,
+  LogOut,
+  Sparkles,
+  User as UserIcon,
+} from "lucide-react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import Avatar from "./avatar"
 
@@ -33,31 +40,43 @@ export default function UserButton({ userData }: { userData: User }) {
         </div>
 
         <DropdownMenuSeparator />
-        <div className="py-1.5 px-2 w-full flex flex-col items-start text-sm">
-          <div className="flex items-center">
-            <Sparkles className={`h-4 w-4 mr-2 text-indigo-500`} />
-            AI Usage: {userData.generations}/1000
+        <DropdownMenuItem>
+          <Sparkles className="size-4 mr-2 text-indigo-500" />
+          <div className="w-full flex flex-col items-start text-sm">
+            <span className="text-sm">{`AI Usage: ${userData.generations}/${MAX_FREE_GENERATION}`}</span>
+            <div className="rounded-full w-full mt-1 h-1.5 overflow-hidden bg-secondary border border-muted-foreground">
+              <div
+                className="h-full bg-indigo-500 rounded-full"
+                style={{
+                  width: `${(userData.generations * 100) / 1000}%`,
+                }}
+              />
+            </div>
           </div>
-          <div className="rounded-full w-full mt-2 h-2 overflow-hidden bg-secondary">
-            <div
-              className="h-full bg-indigo-500 rounded-full"
-              style={{
-                width: `${(userData.generations * 100) / 1000}%`,
-              }}
-            />
-          </div>
-        </div>
-        <DropdownMenuSeparator />
-
+        </DropdownMenuItem>
+        <DropdownMenuItem className="cursor-pointer" asChild>
+          <Link href={"/dashboard"}>
+            <LayoutDashboard className="mr-2 size-4" />
+            <span>Dashboard</span>
+            <DropdownMenuSeparator />
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem className="cursor-pointer" asChild>
+          <Link href={`/@${userData.username}`}>
+            <UserIcon className="mr-2 size-4" />
+            <span>Profile</span>
+            <DropdownMenuSeparator />
+          </Link>
+        </DropdownMenuItem>
         {/* <DropdownMenuItem className="cursor-pointer">
-          <Pencil className="mr-2 h-4 w-4" />
+          <Pencil className="mr-2 size-4" />
           <span>Edit Profile</span>
         </DropdownMenuItem> */}
         <DropdownMenuItem
           onClick={() => signOut(() => router.push("/"))}
           className="!text-destructive cursor-pointer"
         >
-          <LogOut className="mr-2 h-4 w-4" />
+          <LogOut className="mr-2 size-4" />
           <span>Log Out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
