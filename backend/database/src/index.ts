@@ -274,6 +274,18 @@ export default {
 						},
 					})
 					return json(res ?? {})
+				} else if (params.has("username")) {
+					const username = params.get("username") as string
+					const res = await db.query.user.findFirst({
+						where: (user, { eq }) => eq(user.username, username),
+						with: {
+							sandbox: {
+								orderBy: (sandbox, { desc }) => [desc(sandbox.createdAt)],
+							},
+							usersToSandboxes: true,
+						},
+					})
+					return json(res ?? {})
 				} else {
 					const res = await db.select().from(user).all()
 					return json(res ?? {})
@@ -290,7 +302,8 @@ export default {
 				})
 
 				const body = await request.json()
-				const { id, name, email, username, avatarUrl, createdAt, generations } = userSchema.parse(body)
+				const { id, name, email, username, avatarUrl, createdAt, generations } =
+					userSchema.parse(body)
 
 				const res = await db
 					.insert(user)
@@ -324,7 +337,7 @@ export default {
 				if (!username) return invalidRequest
 
 				const exists = await db.query.user.findFirst({
-					where: (user, { eq }) => eq(user.username, username)
+					where: (user, { eq }) => eq(user.username, username),
 				})
 
 				return json({ exists: !!exists })
