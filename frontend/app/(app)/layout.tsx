@@ -1,7 +1,7 @@
 import { User } from "@/lib/types"
+import { generateUniqueUsername } from "@/lib/username-generator"
 import { currentUser } from "@clerk/nextjs"
 import { redirect } from "next/navigation"
-import { generateUniqueUsername } from "@/lib/username-generator";
 
 export default async function AppAuthLayout({
   children,
@@ -27,22 +27,24 @@ export default async function AppAuthLayout({
   if (!dbUserJSON.id) {
     // Try to get GitHub username if available
     const githubUsername = user.externalAccounts.find(
-      account => account.provider === "github"
-    )?.username;
+      (account) => account.provider === "github"
+    )?.username
 
-    const username = githubUsername || await generateUniqueUsername(async (username) => {
-      // Check if username exists in database
-      const userCheck = await fetch(
-        `${process.env.NEXT_PUBLIC_DATABASE_WORKER_URL}/api/user/check-username?username=${username}`,
-        {
-          headers: {
-            Authorization: `${process.env.NEXT_PUBLIC_WORKERS_KEY}`,
-          },
-        }
-      )
-      const exists = await userCheck.json()
-      return exists.exists
-    });
+    const username =
+      githubUsername ||
+      (await generateUniqueUsername(async (username) => {
+        // Check if username exists in database
+        const userCheck = await fetch(
+          `${process.env.NEXT_PUBLIC_DATABASE_WORKER_URL}/api/user/check-username?username=${username}`,
+          {
+            headers: {
+              Authorization: `${process.env.NEXT_PUBLIC_WORKERS_KEY}`,
+            },
+          }
+        )
+        const exists = await userCheck.json()
+        return exists.exists
+      }))
 
     const res = await fetch(
       `${process.env.NEXT_PUBLIC_DATABASE_WORKER_URL}/api/user`,
@@ -64,11 +66,11 @@ export default async function AppAuthLayout({
     )
 
     if (!res.ok) {
-      const error = await res.text();
-      console.error("Failed to create user:", error);
+      const error = await res.text()
+      console.error("Failed to create user:", error)
     } else {
-      const data = await res.json();
-      console.log("User created successfully:", data);
+      const data = await res.json()
+      console.log("User created successfully:", data)
     }
   }
 
