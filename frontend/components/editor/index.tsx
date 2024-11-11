@@ -172,6 +172,9 @@ export default function CodeEditor({
   const editorPanelRef = useRef<ImperativePanelHandle>(null)
   const previewWindowRef = useRef<{ refreshIframe: () => void }>(null)
 
+  // Ref to store the last copied range in the editor to be used in the AIChat component
+  const lastCopiedRangeRef = useRef<{ startLine: number; endLine: number } | null>(null);
+
   const debouncedSetIsSelected = useRef(
     debounce((value: boolean) => {
       setIsSelected(value)
@@ -218,7 +221,6 @@ export default function CodeEditor({
       let mergedConfig: any = { compilerOptions: {} }
 
       for (const file of tsconfigFiles) {
-        const containerId = file.id.split("/").slice(0, 2).join("/")
         const content = await fetchFileContent(file.id)
 
         try {
@@ -228,8 +230,7 @@ export default function CodeEditor({
           if (tsConfig.references) {
             for (const ref of tsConfig.references) {
               const path = ref.path.replace("./", "")
-              const fileId = `${containerId}/${path}`
-              const refContent = await fetchFileContent(fileId)
+              const refContent = await fetchFileContent(path)
               const referenceTsConfig = JSON.parse(refContent)
 
               // Merge configurations
@@ -256,6 +257,17 @@ export default function CodeEditor({
           updatedOptions
         )
       }
+
+      // Store the last copied range in the editor to be used in the AIChat component
+      editor.onDidChangeCursorSelection((e) => {
+        const selection = editor.getSelection();
+        if (selection) {
+          lastCopiedRangeRef.current = {
+            startLine: selection.startLineNumber,
+            endLine: selection.endLineNumber
+          };
+        }
+      });
     }
 
     // Call the function with your file structure
@@ -529,8 +541,6 @@ export default function CodeEditor({
             tab.id === activeFileId ? { ...tab, saved: true } : tab
           )
         )
-        console.log(`Saving file...${activeFileId}`)
-        console.log(`Saving file...${content}`)
         socket?.emit("saveFile", { fileId: activeFileId, body: content })
       }
     }, Number(process.env.FILE_SAVE_DEBOUNCE_DELAY) || 1000),
@@ -1219,6 +1229,9 @@ export default function CodeEditor({
                     "No file selected"
                   }
                   onClose={toggleAIChat}
+                  editorRef={{ current: editorRef }}
+                  lastCopiedRangeRef={lastCopiedRangeRef}
+                  files={files}
                 />
               </ResizablePanel>
             </>

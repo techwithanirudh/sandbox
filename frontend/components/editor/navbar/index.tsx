@@ -14,6 +14,7 @@ import DeployButtonModal from "./deploy"
 import EditSandboxModal from "./edit"
 import RunButtonModal from "./run"
 import ShareSandboxModal from "./share"
+import DownloadButton from "./downloadButton"
 
 export default function Navbar({
   userData,
@@ -22,7 +23,7 @@ export default function Navbar({
 }: {
   userData: User
   sandboxData: Sandbox
-  shared: { id: string; name: string }[]
+  shared: { id: string; name: string; avatarUrl: string }[]
 }) {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isShareOpen, setIsShareOpen] = useState(false)
@@ -78,7 +79,7 @@ export default function Navbar({
                 <Users className="w-4 h-4 mr-2" />
                 Share
               </Button>
-            </>
+              <DownloadButton name={sandboxData.name} /></>
           ) : null}
           <ThemeSwitcher />
           <UserButton userData={userData} />
