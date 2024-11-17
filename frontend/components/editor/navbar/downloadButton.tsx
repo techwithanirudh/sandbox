@@ -1,29 +1,36 @@
-import JSZip from 'jszip'
-import { useSocket } from "@/context/SocketContext"
+// React component for download button
 import { Button } from "@/components/ui/button"
+import { useSocket } from "@/context/SocketContext"
 import { Download } from "lucide-react"
 
 export default function DownloadButton({ name }: { name: string }) {
   const { socket } = useSocket()
 
   const handleDownload = async () => {
-    socket?.emit("downloadFiles", {}, async (response: {files: {path: string, content: string}[]}) => {
-      const zip = new JSZip()
-      
-      response.files.forEach(file => {
-        zip.file(file.path, file.content)
-      })
-      
-      const blob = await zip.generateAsync({type: "blob"})
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${name}.zip`
-      a.click()
-      window.URL.revokeObjectURL(url)
-    })
-  }
+    socket?.emit(
+      "downloadFiles",
+      { timestamp: Date.now() },
+      async (response: { zipBlob: string }) => {
+        const { zipBlob } = response
 
+        // Decode Base64 back to binary data
+        const binary = atob(zipBlob)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i)
+        }
+        const blob = new Blob([bytes], { type: "application/zip" })
+
+        // Create URL and download
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `${name}.zip`
+        a.click()
+        window.URL.revokeObjectURL(url)
+      }
+    )
+  }
 
   return (
     <Button variant="outline" onClick={handleDownload}>

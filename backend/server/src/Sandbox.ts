@@ -13,7 +13,7 @@ import {
 } from "./ratelimit"
 import { SecureGitClient } from "./SecureGitClient"
 import { TerminalManager } from "./TerminalManager"
-import { TFile, TFileData, TFolder } from "./types"
+import { TFile, TFolder } from "./types"
 import { LockManager } from "./utils"
 const lockManager = new LockManager()
 
@@ -251,13 +251,10 @@ export class Sandbox {
     const handleDownloadFiles: SocketHandler = async () => {
       if (!this.fileManager) throw Error("No file manager")
 
-      // Get all files with their data through fileManager
-      const files = this.fileManager.fileData.map((file: TFileData) => ({
-        path: file.id.startsWith("/") ? file.id.slice(1) : file.id,
-        content: file.data,
-      }))
+      // Get the Base64 encoded ZIP string
+      const zipBase64 = await this.fileManager.getFilesForDownload()
 
-      return { files }
+      return { zipBlob: zipBase64 }
     }
 
     return {

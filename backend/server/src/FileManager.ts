@@ -1,4 +1,5 @@
 import { FilesystemEvent, Sandbox, WatchHandle } from "e2b"
+import JSZip from "jszip"
 import path from "path"
 import RemoteFileStorage from "./RemoteFileStorage"
 import { MAX_BODY_SIZE } from "./ratelimit"
@@ -471,6 +472,67 @@ export class FileManager {
     await RemoteFileStorage.createFile(this.getRemoteFileId(id))
 
     return true
+  }
+  public async getFilesForDownload(): Promise<string> {
+    // Get all file paths, excluding node_modules
+    const result = await this.sandbox.commands.run(
+      `find "${this.dirName}" -path "${this.dirName}/node_modules" -prune -o -type f -print`
+    )
+    const filePaths = result.stdout.split("\n").filter((path) => path)
+
+    if (!filePaths || filePaths.length === 0) {
+      console.error(
+        "No files found in the sandbox project directory for download."
+      )
+      return ""
+    }
+
+    console.log("Paths found for download (excluding node_modules):", filePaths)
+
+    // Create new JSZip instance
+    const zip = new JSZip()
+
+    // Add files to zip with synchronized content
+    for (const filePath of filePaths) {
+      const relativePath = filePath.replace(this.dirName, "") // Remove base directory from path
+      try {
+        // Get the latest content directly from the sandbox
+        let content = await this.sandbox.files.read(filePath)
+
+        // Update the fileData cache with the latest content
+        const fileDataEntry = this.fileData.find((f) => f.id === relativePath)
+        if (fileDataEntry) {
+          fileDataEntry.data = typeof content === "string" ? content : ""
+        }
+
+        // Set content to an empty string if file is empty or undefined
+        if (typeof content !== "string") {
+          content = ""
+        }
+
+        zip.file(relativePath, content)
+        console.log(`Added file to ZIP: ${relativePath}`)
+      } catch (error) {
+        console.error(`Failed to read content for ${relativePath}:`, error)
+      }
+    }
+
+    // Generate zip file
+    const zipBlob = await zip.generateAsync({
+      type: "blob",
+      compression: "DEFLATE",
+      compressionOptions: {
+        level: 6,
+      },
+    })
+
+    // Convert Blob to Base64
+    const zipBlobArrayBuffer = await zipBlob.arrayBuffer()
+    const zipBlobBase64 = btoa(
+      String.fromCharCode(...new Uint8Array(zipBlobArrayBuffer))
+    )
+
+    return zipBlobBase64
   }
 
   // Create a new folder
