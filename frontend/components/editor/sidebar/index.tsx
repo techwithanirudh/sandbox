@@ -25,7 +25,6 @@ export default function Sidebar({
   handleDeleteFolder,
   socket,
   setFiles,
-  addNew,
   deletingFolderId,
   toggleAIChat,
   isAIChatOpen,
@@ -43,7 +42,6 @@ export default function Sidebar({
   handleDeleteFolder: (folder: TFolder) => void
   socket: Socket
   setFiles: (files: (TFile | TFolder)[]) => void
-  addNew: (name: string, type: "file" | "folder") => void
   deletingFolderId: string
   toggleAIChat: () => void
   isAIChatOpen: boolean
@@ -176,7 +174,6 @@ export default function Sidebar({
                   stopEditing={() => {
                     setCreatingNew(null)
                   }}
-                  addNew={addNew}
                 />
               ) : null}
             </>

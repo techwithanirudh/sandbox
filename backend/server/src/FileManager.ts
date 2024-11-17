@@ -125,6 +125,19 @@ export class FileManager {
     return this.files
   }
 
+  private async loadLocalFiles() {
+    // Reload file list from the container to include template files
+    const result = await this.sandbox.commands.run(
+      `find "${this.dirName}" -type f`
+    ) // List all files recursively
+
+    const localPaths = result.stdout.split("\n").filter((path) => path) // Split the output into an array and filter out empty strings
+    const relativePaths = localPaths.map((filePath) =>
+      path.posix.relative(this.dirName, filePath)
+    ) // Convert absolute paths to relative paths
+    this.files = generateFileStructure(relativePaths)
+  }
+
   // Initialize the FileManager
   async initialize() {
     // Download files from remote file storage
@@ -146,15 +159,7 @@ export class FileManager {
     })
     await Promise.all(promises)
 
-    // Reload file list from the container to include template files
-    const result = await this.sandbox.commands.run(
-      `find "${this.dirName}" -type f`
-    ) // List all files recursively
-    const localPaths = result.stdout.split("\n").filter((path) => path) // Split the output into an array and filter out empty strings
-    const relativePaths = localPaths.map((filePath) =>
-      path.posix.relative(this.dirName, filePath)
-    ) // Convert absolute paths to relative paths
-    this.files = generateFileStructure(relativePaths)
+    await this.loadLocalFiles()
 
     // Make the logged in user the owner of all project files
     this.fixPermissions()
@@ -221,77 +226,13 @@ export class FileManager {
 
             // Handle file/directory creation event
             if (event.type === "create") {
-              const folder = findFolderById(
-                this.files,
-                sandboxDirectory
-              ) as TFolder
-              const isDir = await this.isDirectory(containerFilePath)
-
-              const newItem = isDir
-                ? ({
-                    id: sandboxFilePath,
-                    name: event.name,
-                    type: "folder",
-                    children: [],
-                  } as TFolder)
-                : ({
-                    id: sandboxFilePath,
-                    name: event.name,
-                    type: "file",
-                  } as TFile)
-
-              if (folder) {
-                // If the folder exists, add the new item (file/folder) as a child
-                folder.children.push(newItem)
-              } else {
-                // If folder doesn't exist, add the new item to the root
-                this.files.push(newItem)
-              }
-
-              if (!isDir) {
-                const fileData = await this.sandbox.files.read(
-                  containerFilePath
-                )
-                const fileContents =
-                  typeof fileData === "string" ? fileData : ""
-                this.fileData.push({
-                  id: sandboxFilePath,
-                  data: fileContents,
-                })
-              }
-
+              await this.loadLocalFiles()
               console.log(`Create ${sandboxFilePath}`)
             }
 
             // Handle file/directory removal or rename event
             else if (event.type === "remove" || event.type == "rename") {
-              const folder = findFolderById(
-                this.files,
-                sandboxDirectory
-              ) as TFolder
-              const isDir = await this.isDirectory(containerFilePath)
-
-              const isFileMatch = (file: TFolder | TFile | TFileData) =>
-                file.id === sandboxFilePath ||
-                file.id.startsWith(containerFilePath + "/")
-
-              if (folder) {
-                // Remove item from its parent folder
-                folder.children = folder.children.filter(
-                  (file: TFolder | TFile) => !isFileMatch(file)
-                )
-              } else {
-                // Remove from the root if it's not inside a folder
-                this.files = this.files.filter(
-                  (file: TFolder | TFile) => !isFileMatch(file)
-                )
-              }
-
-              // Also remove any corresponding file data
-              this.fileData = this.fileData.filter(
-                (file: TFileData) => !isFileMatch(file)
-              )
-
+              await this.loadLocalFiles()
               console.log(`Removed: ${sandboxFilePath}`)
             }
 
@@ -458,17 +399,6 @@ export class FileManager {
     await this.sandbox.files.write(path.posix.join(this.dirName, id), "")
     await this.fixPermissions()
 
-    this.files.push({
-      id,
-      name,
-      type: "file",
-    })
-
-    this.fileData.push({
-      id,
-      data: "",
-    })
-
     await RemoteFileStorage.createFile(this.getRemoteFileId(id))
 
     return true
@@ -568,7 +498,6 @@ export class FileManager {
     if (!file) return this.files
 
     await this.sandbox.files.remove(path.posix.join(this.dirName, fileId))
-    this.fileData = this.fileData.filter((f) => f.id !== fileId)
 
     await RemoteFileStorage.deleteFile(this.getRemoteFileId(fileId))
     return this.updateFileStructure()
@@ -583,7 +512,6 @@ export class FileManager {
     await Promise.all(
       files.map(async (file) => {
         await this.sandbox.files.remove(path.posix.join(this.dirName, file))
-        this.fileData = this.fileData.filter((f) => f.id !== file)
         await RemoteFileStorage.deleteFile(this.getRemoteFileId(file))
       })
     )

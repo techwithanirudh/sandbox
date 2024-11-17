@@ -23,7 +23,6 @@ import { useSocket } from "@/context/SocketContext"
 import { parseTSConfigToMonacoOptions } from "@/lib/tsconfig"
 import { Sandbox, TFile, TFolder, TTab, User } from "@/lib/types"
 import {
-  addNew,
   cn,
   debounce,
   deepMerge,
@@ -856,13 +855,7 @@ export default function CodeEditor({
   }
 
   const handleDeleteFile = (file: TFile) => {
-    socket?.emit(
-      "deleteFile",
-      { fileId: file.id },
-      (response: (TFolder | TFile)[]) => {
-        setFiles(response)
-      }
-    )
+    socket?.emit("deleteFile", { fileId: file.id })
     closeTab(file.id)
   }
 
@@ -878,7 +871,6 @@ export default function CodeEditor({
       "deleteFolder",
       { folderId: folder.id },
       (response: (TFolder | TFile)[]) => {
-        setFiles(response)
         setDeletingFolderId("")
       }
     )
@@ -1047,7 +1039,6 @@ export default function CodeEditor({
           handleDeleteFolder={handleDeleteFolder}
           socket={socket!}
           setFiles={setFiles}
-          addNew={(name, type) => addNew(name, type, setFiles, sandboxData)}
           deletingFolderId={deletingFolderId}
           toggleAIChat={toggleAIChat}
           isAIChatOpen={isAIChatOpen}
