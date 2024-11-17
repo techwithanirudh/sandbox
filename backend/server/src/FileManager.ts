@@ -188,7 +188,7 @@ export class FileManager {
   // Watch a directory for changes
   async watchDirectory(directory: string): Promise<WatchHandle | undefined> {
     try {
-      const handle = await this.sandbox.files.watch(
+      const handle = await this.sandbox.files.watchDir(
         directory,
         async (event: FilesystemEvent) => {
           try {
@@ -341,7 +341,7 @@ export class FileManager {
             )
           }
         },
-        { timeout: 0 }
+        { timeoutMs: 0 }
       )
       this.fileWatchers.push(handle)
       return handle
@@ -595,7 +595,7 @@ export class FileManager {
   async closeWatchers() {
     await Promise.all(
       this.fileWatchers.map(async (handle: WatchHandle) => {
-        await handle.close()
+        await handle.stop()
       })
     )
   }
