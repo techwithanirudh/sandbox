@@ -385,11 +385,20 @@ export class FileManager {
       throw new Error("File size too large. Please reduce the file size.")
     }
     await RemoteFileStorage.saveFile(this.getRemoteFileId(fileId), body)
-    const file = this.fileData.find((f) => f.id === fileId)
-    if (!file) return
-    file.data = body
 
-    await this.sandbox.files.write(path.posix.join(this.dirName, file.id), body)
+    let file = this.fileData.find((f) => f.id === fileId)
+    if (file) {
+      file.data = body
+    } else {
+      // If the file wasn't in our cache, add it
+      file = {
+        id: fileId,
+        data: body,
+      }
+      this.fileData.push(file)
+    }
+
+    await this.sandbox.files.write(path.posix.join(this.dirName, fileId), body)
     this.fixPermissions()
   }
 
