@@ -158,7 +158,10 @@ export class Sandbox {
     const handleDeploy: SocketHandler = async (_: any) => {
       if (!this.gitClient) throw Error("No git client")
       if (!this.fileManager) throw Error("No file manager")
-      await this.gitClient.pushFiles(this.fileManager?.fileData, this.sandboxId)
+      await this.gitClient.pushFiles(
+        await this.fileManager?.loadFileContent(),
+        this.sandboxId
+      )
       return { success: true }
     }
 

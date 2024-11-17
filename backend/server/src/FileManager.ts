@@ -403,48 +403,64 @@ export class FileManager {
 
     return true
   }
-  public async getFilesForDownload(): Promise<string> {
+
+  public async loadFileContent(): Promise<TFileData[]> {
     // Get all file paths, excluding node_modules
     const result = await this.sandbox.commands.run(
       `find "${this.dirName}" -path "${this.dirName}/node_modules" -prune -o -type f -print`
     )
-    const filePaths = result.stdout.split("\n").filter((path) => path)
+    const filePaths = result.stdout.split("\n").filter((path) => path) ?? []
 
-    if (!filePaths || filePaths.length === 0) {
+    console.log("Paths found for download (excluding node_modules):", filePaths)
+
+    // Add files to zip with synchronized content
+    for (const filePath of filePaths) {
+      const relativePath = filePath.replace(this.dirName, "") // Remove base directory from path
+      try {
+        // Read the file content from the sandbox
+        const content = await this.sandbox.files.read(filePath)
+
+        // Find the existing file data entry or create a new one
+        const fileDataEntry = this.fileData.find(
+          (f) => f.id === relativePath
+        ) || {
+          id: relativePath,
+          data: typeof content === "string" ? content : "",
+        }
+
+        // Update the file data entry if it already exists, otherwise add it to the list
+        if (!this.fileData.includes(fileDataEntry)) {
+          this.fileData.push(fileDataEntry)
+        } else {
+          fileDataEntry.data = typeof content === "string" ? content : ""
+        }
+      } catch (error) {
+        console.error(`Failed to read content for ${relativePath}:`, error)
+      }
+    }
+
+    return this.fileData
+  }
+
+  public async getFilesForDownload(): Promise<string> {
+    // Create new JSZip instance
+    const zip = new JSZip()
+
+    await this.loadFileContent()
+
+    if (this.fileData.length === 0) {
       console.error(
         "No files found in the sandbox project directory for download."
       )
       return ""
     }
 
-    console.log("Paths found for download (excluding node_modules):", filePaths)
-
-    // Create new JSZip instance
-    const zip = new JSZip()
-
     // Add files to zip with synchronized content
-    for (const filePath of filePaths) {
-      const relativePath = filePath.replace(this.dirName, "") // Remove base directory from path
-      try {
-        // Get the latest content directly from the sandbox
-        let content = await this.sandbox.files.read(filePath)
-
-        // Update the fileData cache with the latest content
-        const fileDataEntry = this.fileData.find((f) => f.id === relativePath)
-        if (fileDataEntry) {
-          fileDataEntry.data = typeof content === "string" ? content : ""
-        }
-
-        // Set content to an empty string if file is empty or undefined
-        if (typeof content !== "string") {
-          content = ""
-        }
-
-        zip.file(relativePath, content)
-        console.log(`Added file to ZIP: ${relativePath}`)
-      } catch (error) {
-        console.error(`Failed to read content for ${relativePath}:`, error)
-      }
+    for (const fileDataEntry of this.fileData) {
+      const relativePath = fileDataEntry.id
+      const content = fileDataEntry.data
+      zip.file(relativePath, content)
+      console.log(`Added file to ZIP: ${relativePath}`)
     }
 
     // Generate zip file
