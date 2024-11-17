@@ -7,11 +7,11 @@ import * as monaco from "monaco-editor"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
-import { TypedLiveblocksProvider, useRoom, useSelf } from "@/liveblocks.config"
-import LiveblocksProvider from "@liveblocks/yjs"
-import { MonacoBinding } from "y-monaco"
-import { Awareness } from "y-protocols/awareness"
-import * as Y from "yjs"
+// import { TypedLiveblocksProvider, useRoom, useSelf } from "@/liveblocks.config"
+// import LiveblocksProvider from "@liveblocks/yjs"
+// import { MonacoBinding } from "y-monaco"
+// import { Awareness } from "y-protocols/awareness"
+// import * as Y from "yjs"
 
 import {
   ResizableHandle,
@@ -45,7 +45,7 @@ import { Button } from "../ui/button"
 import Tab from "../ui/tab"
 import AIChat from "./AIChat"
 import GenerateInput from "./generate"
-import { Cursors } from "./live/cursors"
+// import { Cursors } from "./live/cursors"
 import DisableAccessModal from "./live/disableModal"
 import Loading from "./loading"
 import PreviewWindow from "./preview"
@@ -146,20 +146,20 @@ export default function CodeEditor({
   const isOwner = sandboxData.userId === userData.id
   const clerk = useClerk()
 
-  // Liveblocks hooks
-  const room = useRoom()
-  const [provider, setProvider] = useState<TypedLiveblocksProvider>()
-  const userInfo = useSelf((me) => me.info)
+  // // Liveblocks hooks
+  // const room = useRoom()
+  // const [provider, setProvider] = useState<TypedLiveblocksProvider>()
+  // const userInfo = useSelf((me) => me.info)
 
-  // Liveblocks providers map to prevent reinitializing providers
-  type ProviderData = {
-    provider: LiveblocksProvider<never, never, never, never>
-    yDoc: Y.Doc
-    yText: Y.Text
-    binding?: MonacoBinding
-    onSync: (isSynced: boolean) => void
-  }
-  const providersMap = useRef(new Map<string, ProviderData>())
+  // // Liveblocks providers map to prevent reinitializing providers
+  // type ProviderData = {
+  //   provider: LiveblocksProvider<never, never, never, never>
+  //   yDoc: Y.Doc
+  //   yText: Y.Text
+  //   binding?: MonacoBinding
+  //   onSync: (isSynced: boolean) => void
+  // }
+  // const providersMap = useRef(new Map<string, ProviderData>())
 
   // Refs for libraries / features
   const editorContainerRef = useRef<HTMLDivElement>(null)
@@ -573,82 +573,82 @@ export default function CodeEditor({
     }
   }, [activeFileId, tabs, debouncedSaveData, setIsAIChatOpen, editorRef])
 
-  // Liveblocks live collaboration setup effect
-  useEffect(() => {
-    const tab = tabs.find((t) => t.id === activeFileId)
-    const model = editorRef?.getModel()
+  // // Liveblocks live collaboration setup effect
+  // useEffect(() => {
+  //   const tab = tabs.find((t) => t.id === activeFileId)
+  //   const model = editorRef?.getModel()
 
-    if (!editorRef || !tab || !model) return
+  //   if (!editorRef || !tab || !model) return
 
-    let providerData: ProviderData
+  //   let providerData: ProviderData
 
-    // When a file is opened for the first time, create a new provider and store in providersMap.
-    if (!providersMap.current.has(tab.id)) {
-      const yDoc = new Y.Doc()
-      const yText = yDoc.getText(tab.id)
-      const yProvider = new LiveblocksProvider(room, yDoc)
+  //   // When a file is opened for the first time, create a new provider and store in providersMap.
+  //   if (!providersMap.current.has(tab.id)) {
+  //     const yDoc = new Y.Doc()
+  //     const yText = yDoc.getText(tab.id)
+  //     const yProvider = new LiveblocksProvider(room, yDoc)
 
-      // Inserts the file content into the editor once when the tab is changed.
-      const onSync = (isSynced: boolean) => {
-        if (isSynced) {
-          const text = yText.toString()
-          if (text === "") {
-            if (activeFileContent) {
-              yText.insert(0, activeFileContent)
-            } else {
-              setTimeout(() => {
-                yText.insert(0, editorRef.getValue())
-              }, 0)
-            }
-          }
-        }
-      }
+  //     // Inserts the file content into the editor once when the tab is changed.
+  //     const onSync = (isSynced: boolean) => {
+  //       if (isSynced) {
+  //         const text = yText.toString()
+  //         if (text === "") {
+  //           if (activeFileContent) {
+  //             yText.insert(0, activeFileContent)
+  //           } else {
+  //             setTimeout(() => {
+  //               yText.insert(0, editorRef.getValue())
+  //             }, 0)
+  //           }
+  //         }
+  //       }
+  //     }
 
-      yProvider.on("sync", onSync)
+  //     yProvider.on("sync", onSync)
 
-      // Save the provider to the map.
-      providerData = { provider: yProvider, yDoc, yText, onSync }
-      providersMap.current.set(tab.id, providerData)
-    } else {
-      // When a tab is opened that has been open before, reuse the existing provider.
-      providerData = providersMap.current.get(tab.id)!
-    }
+  //     // Save the provider to the map.
+  //     providerData = { provider: yProvider, yDoc, yText, onSync }
+  //     providersMap.current.set(tab.id, providerData)
+  //   } else {
+  //     // When a tab is opened that has been open before, reuse the existing provider.
+  //     providerData = providersMap.current.get(tab.id)!
+  //   }
 
-    const binding = new MonacoBinding(
-      providerData.yText,
-      model,
-      new Set([editorRef]),
-      providerData.provider.awareness as unknown as Awareness
-    )
+  //   const binding = new MonacoBinding(
+  //     providerData.yText,
+  //     model,
+  //     new Set([editorRef]),
+  //     providerData.provider.awareness as unknown as Awareness
+  //   )
 
-    providerData.binding = binding
-    setProvider(providerData.provider)
+  //   providerData.binding = binding
+  //   setProvider(providerData.provider)
 
-    return () => {
-      // Cleanup logic
-      if (binding) {
-        binding.destroy()
-      }
-      if (providerData.binding) {
-        providerData.binding = undefined
-      }
-    }
-  }, [room, activeFileContent])
+  //   return () => {
+  //     // Cleanup logic
+  //     if (binding) {
+  //       binding.destroy()
+  //     }
+  //     if (providerData.binding) {
+  //       providerData.binding = undefined
+  //     }
+  //   }
+  // }, [room, activeFileContent])
 
-  // Added this effect to clean up when the component unmounts
-  useEffect(() => {
-    return () => {
-      // Clean up all providers when the component unmounts
-      providersMap.current.forEach((data) => {
-        if (data.binding) {
-          data.binding.destroy()
-        }
-        data.provider.disconnect()
-        data.yDoc.destroy()
-      })
-      providersMap.current.clear()
-    }
-  }, [])
+  // // Added this effect to clean up when the component unmounts
+  // useEffect(() => {
+  //   return () => {
+  //     // Clean up all providers when the component unmounts
+  //     providersMap.current.forEach((data) => {
+  //       if (data.binding) {
+  //         data.binding.destroy()
+  //       }
+  //       data.provider.disconnect()
+  //       data.yDoc.destroy()
+  //     })
+  //     providersMap.current.clear()
+  //   }
+  // }, [])
 
   // Connection/disconnection effect
   useEffect(() => {
@@ -1088,62 +1088,62 @@ export default function CodeEditor({
                       </div>
                     </>
                   ) : // Note clerk.loaded is required here due to a bug: https://github.com/clerk/javascript/issues/1643
-                  clerk.loaded ? (
-                    <>
-                      {provider && userInfo ? (
-                        <Cursors yProvider={provider} userInfo={userInfo} />
-                      ) : null}
-                      <Editor
-                        height="100%"
-                        language={editorLanguage}
-                        beforeMount={handleEditorWillMount}
-                        onMount={handleEditorMount}
-                        onChange={(value) => {
-                          // If the new content is different from the cached content, update it
-                          if (value !== fileContents[activeFileId]) {
-                            setActiveFileContent(value ?? "") // Update the active file content
-                            // Mark the file as unsaved by setting 'saved' to false
-                            setTabs((prev) =>
-                              prev.map((tab) =>
-                                tab.id === activeFileId
-                                  ? { ...tab, saved: false }
-                                  : tab
+                    clerk.loaded ? (
+                      <>
+                        {/* {provider && userInfo ? (
+                          <Cursors yProvider={provider} userInfo={userInfo} />
+                        ) : null} */}
+                        <Editor
+                          height="100%"
+                          language={editorLanguage}
+                          beforeMount={handleEditorWillMount}
+                          onMount={handleEditorMount}
+                          onChange={(value) => {
+                            // If the new content is different from the cached content, update it
+                            if (value !== fileContents[activeFileId]) {
+                              setActiveFileContent(value ?? "") // Update the active file content
+                              // Mark the file as unsaved by setting 'saved' to false
+                              setTabs((prev) =>
+                                prev.map((tab) =>
+                                  tab.id === activeFileId
+                                    ? { ...tab, saved: false }
+                                    : tab
+                                )
                               )
-                            )
-                          } else {
-                            // If the content matches the cached content, mark the file as saved
-                            setTabs((prev) =>
-                              prev.map((tab) =>
-                                tab.id === activeFileId
-                                  ? { ...tab, saved: true }
-                                  : tab
+                            } else {
+                              // If the content matches the cached content, mark the file as saved
+                              setTabs((prev) =>
+                                prev.map((tab) =>
+                                  tab.id === activeFileId
+                                    ? { ...tab, saved: true }
+                                    : tab
+                                )
                               )
-                            )
-                          }
-                        }}
-                        options={{
-                          tabSize: 2,
-                          minimap: {
-                            enabled: false,
-                          },
-                          padding: {
-                            bottom: 4,
-                            top: 4,
-                          },
-                          scrollBeyondLastLine: false,
-                          fixedOverflowWidgets: true,
-                          fontFamily: "var(--font-geist-mono)",
-                        }}
-                        theme={theme === "light" ? "vs" : "vs-dark"}
-                        value={activeFileContent}
-                      />
-                    </>
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xl font-medium text-muted-foreground/50 select-none">
-                      <Loader2 className="animate-spin w-6 h-6 mr-3" />
-                      Waiting for Clerk to load...
-                    </div>
-                  )}
+                            }
+                          }}
+                          options={{
+                            tabSize: 2,
+                            minimap: {
+                              enabled: false,
+                            },
+                            padding: {
+                              bottom: 4,
+                              top: 4,
+                            },
+                            scrollBeyondLastLine: false,
+                            fixedOverflowWidgets: true,
+                            fontFamily: "var(--font-geist-mono)",
+                          }}
+                          theme={theme === "light" ? "vs" : "vs-dark"}
+                          value={activeFileContent}
+                        />
+                      </>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xl font-medium text-muted-foreground/50 select-none">
+                        <Loader2 className="animate-spin w-6 h-6 mr-3" />
+                        Waiting for Clerk to load...
+                      </div>
+                    )}
                 </div>
               </ResizablePanel>
               <ResizableHandle />
