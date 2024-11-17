@@ -3,9 +3,9 @@ import React, { useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Button } from "../../ui/button"
-import { copyToClipboard, stringifyContent } from "./lib/chatUtils"
 import ContextTabs from "./ContextTabs"
-import { createMarkdownComponents } from './lib/markdownComponents'
+import { copyToClipboard, stringifyContent } from "./lib/chatUtils"
+import { createMarkdownComponents } from "./lib/markdownComponents"
 import { MessageProps } from "./types"
 
 export default function ChatMessage({
@@ -14,7 +14,6 @@ export default function ChatMessage({
   setIsContextExpanded,
   socket,
 }: MessageProps) {
-
   // State for expanded message index
   const [expandedMessageIndex, setExpandedMessageIndex] = useState<
     number | null
@@ -23,7 +22,7 @@ export default function ChatMessage({
   // State for copied text
   const [copiedText, setCopiedText] = useState<string | null>(null)
 
-  // Render copy button for text content 
+  // Render copy button for text content
   const renderCopyButton = (text: any) => (
     <Button
       onClick={() => copyToClipboard(stringifyContent(text), setCopiedText)}
@@ -43,26 +42,26 @@ export default function ChatMessage({
   const askAboutCode = (code: any) => {
     const contextString = stringifyContent(code)
     const newContext = `Regarding this code:\n${contextString}`
-    
+
     // Format timestamp to match chat message format (HH:MM PM)
-    const timestamp = new Date().toLocaleTimeString('en-US', {
+    const timestamp = new Date().toLocaleTimeString("en-US", {
       hour12: true,
-      hour: '2-digit',
-      minute: '2-digit',
+      hour: "2-digit",
+      minute: "2-digit",
     })
-    
+
     // Instead of replacing context, append to it
     if (message.role === "assistant") {
       // For assistant messages, create a new context tab with the response content and timestamp
       setContext(newContext, `AI Response (${timestamp})`, {
         start: 1,
-        end: contextString.split('\n').length
+        end: contextString.split("\n").length,
       })
     } else {
       // For user messages, create a new context tab with the selected content and timestamp
       setContext(newContext, `User Chat (${timestamp})`, {
         start: 1,
-        end: contextString.split('\n').length
+        end: contextString.split("\n").length,
       })
     }
     setIsContextExpanded(false)
@@ -127,7 +126,9 @@ export default function ChatMessage({
               contextTabs={parseContextToTabs(message.context)}
               onRemoveTab={() => {}}
               isExpanded={expandedMessageIndex === 0}
-              onToggleExpand={() => setExpandedMessageIndex(expandedMessageIndex === 0 ? null : 0)}
+              onToggleExpand={() =>
+                setExpandedMessageIndex(expandedMessageIndex === 0 ? null : 0)
+              }
               className="[&_div:first-child>div:first-child>div]:bg-[#0D0D0D] [&_button:first-child]:hidden [&_button:last-child]:hidden"
             />
             {expandedMessageIndex === 0 && (
@@ -153,7 +154,7 @@ export default function ChatMessage({
                           const updatedContext = `Regarding this code:\n${e.target.value}`
                           setContext(updatedContext, "Selected Content", {
                             start: 1,
-                            end: e.target.value.split('\n').length
+                            end: e.target.value.split("\n").length,
                           })
                         }}
                         className="w-full p-2 bg-[#1e1e1e] text-white font-mono text-sm rounded"
@@ -187,10 +188,7 @@ export default function ChatMessage({
         )}
         {/* Render markdown content */}
         {message.role === "assistant" ? (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={components}
-          >
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
             {message.content}
           </ReactMarkdown>
         ) : (
@@ -201,26 +199,28 @@ export default function ChatMessage({
   )
 }
 
-// Parse context to tabs for context tabs component 
+// Parse context to tabs for context tabs component
 function parseContextToTabs(context: string) {
   const sections = context.split(/(?=File |Code from )/)
-  return sections.map((section, index) => {
-    const lines = section.trim().split('\n')
-    const titleLine = lines[0]
-    let content = lines.slice(1).join('\n').trim()
-    
-    // Remove code block markers for display
-    content = content.replace(/^```[\w-]*\n/, '').replace(/\n```$/, '')
-    
-    // Determine if the context is a file or code
-    const isFile = titleLine.startsWith('File ')
-    const name = titleLine.replace(/^(File |Code from )/, '').replace(':', '')
-    
-    return {
-      id: `context-${index}`,
-      type: isFile ? "file" as const : "code" as const,
-      name: name,
-      content: content
-    }
-  }).filter(tab => tab.content.length > 0)
+  return sections
+    .map((section, index) => {
+      const lines = section.trim().split("\n")
+      const titleLine = lines[0]
+      let content = lines.slice(1).join("\n").trim()
+
+      // Remove code block markers for display
+      content = content.replace(/^```[\w-]*\n/, "").replace(/\n```$/, "")
+
+      // Determine if the context is a file or code
+      const isFile = titleLine.startsWith("File ")
+      const name = titleLine.replace(/^(File |Code from )/, "").replace(":", "")
+
+      return {
+        id: `context-${index}`,
+        type: isFile ? ("file" as const) : ("code" as const),
+        name: name,
+        content: content,
+      }
+    })
+    .filter((tab) => tab.content.length > 0)
 }

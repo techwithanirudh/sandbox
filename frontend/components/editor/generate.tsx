@@ -72,7 +72,7 @@ export default function GenerateInput({
         fileName: data.fileName,
         code: data.code,
         line: data.line,
-        instructions: regenerate ? currentPrompt : input
+        instructions: regenerate ? currentPrompt : input,
       },
       (res: { response: string; success: boolean }) => {
         console.log("Generated code", res.response, res.success)

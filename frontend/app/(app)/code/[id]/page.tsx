@@ -51,7 +51,11 @@ const getSharedUsers = async (usersToSandboxes: UsersToSandboxes[]) => {
         }
       )
       const userData: User = await userRes.json()
-      return { id: userData.id, name: userData.name, avatarUrl: userData.avatarUrl }
+      return {
+        id: userData.id,
+        name: userData.name,
+        avatarUrl: userData.avatarUrl,
+      }
     })
   )
 
@@ -94,7 +98,9 @@ export default async function CodePage({ params }: { params: { id: string } }) {
             <Navbar
               userData={userData}
               sandboxData={sandboxData}
-              shared={shared as { id: string; name: string; avatarUrl: string }[]}
+              shared={
+                shared as { id: string; name: string; avatarUrl: string }[]
+              }
             />
             <div className="w-screen flex grow">
               <CodeEditor userData={userData} sandboxData={sandboxData} />

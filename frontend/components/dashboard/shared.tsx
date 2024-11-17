@@ -6,12 +6,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { projectTemplates } from "@/lib/data"
 import { ChevronRight } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import Avatar from "../ui/avatar"
 import Button from "../ui/customButton"
-import { projectTemplates } from "@/lib/data"
 
 export default function DashboardSharedWithMe({
   shared,
@@ -47,7 +47,8 @@ export default function DashboardSharedWithMe({
                       <Image
                         alt=""
                         src={
-                          projectTemplates.find((p) => p.id === sandbox.type)?.icon ?? "/project-icons/node.svg"
+                          projectTemplates.find((p) => p.id === sandbox.type)
+                            ?.icon ?? "/project-icons/node.svg"
                         }
                         width={20}
                         height={20}
@@ -58,7 +59,7 @@ export default function DashboardSharedWithMe({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center">
-                      <Avatar 
+                      <Avatar
                         name={sandbox.author}
                         avatarUrl={sandbox.authorAvatarUrl}
                         className="mr-2"

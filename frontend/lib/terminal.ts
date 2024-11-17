@@ -83,8 +83,8 @@ export const closeTerminal = ({
         ? numTerminals === 1
           ? null
           : index < numTerminals - 1
-            ? terminals[index + 1].id
-            : terminals[index - 1].id
+          ? terminals[index + 1].id
+          : terminals[index - 1].id
         : activeTerminalId
 
     setTerminals((prev) => prev.filter((t) => t.id !== term.id))

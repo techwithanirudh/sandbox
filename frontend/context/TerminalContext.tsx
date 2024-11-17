@@ -63,7 +63,7 @@ export const TerminalProvider: React.FC<{ children: React.ReactNode }> = ({
         terminals,
         setTerminals,
         setActiveTerminalId,
-        setClosingTerminal: () => { },
+        setClosingTerminal: () => {},
         socket,
         activeTerminalId,
       })

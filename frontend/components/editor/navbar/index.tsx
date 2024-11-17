@@ -11,10 +11,10 @@ import Link from "next/link"
 import { useState } from "react"
 import { Avatars } from "../live/avatars"
 import DeployButtonModal from "./deploy"
+import DownloadButton from "./downloadButton"
 import EditSandboxModal from "./edit"
 import RunButtonModal from "./run"
 import ShareSandboxModal from "./share"
-import DownloadButton from "./downloadButton"
 
 export default function Navbar({
   userData,
@@ -79,7 +79,8 @@ export default function Navbar({
                 <Users className="w-4 h-4 mr-2" />
                 Share
               </Button>
-              <DownloadButton name={sandboxData.name} /></>
+              <DownloadButton name={sandboxData.name} />
+            </>
           ) : null}
           <ThemeSwitcher />
           <UserButton userData={userData} />
