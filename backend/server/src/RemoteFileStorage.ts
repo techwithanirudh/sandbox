@@ -61,11 +61,7 @@ export const RemoteFileStorage = {
     return res.ok
   },
 
-  renameFile: async (
-    fileId: string,
-    newFileId: string,
-    data: string
-  ) => {
+  renameFile: async (fileId: string, newFileId: string, data: string) => {
     const res = await fetch(`${process.env.STORAGE_WORKER_URL}/api/rename`, {
       method: "POST",
       headers: {
@@ -111,7 +107,7 @@ export const RemoteFileStorage = {
       }
     )
     return (await res.json()).size
-  }
+  },
 }
 
 export default RemoteFileStorage

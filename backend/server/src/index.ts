@@ -10,14 +10,14 @@ import { ConnectionManager } from "./ConnectionManager"
 import { DokkuClient } from "./DokkuClient"
 import { Sandbox } from "./Sandbox"
 import { SecureGitClient } from "./SecureGitClient"
-import { socketAuth } from "./socketAuth"; // Import the new socketAuth middleware
+import { socketAuth } from "./socketAuth" // Import the new socketAuth middleware
 import { TFile, TFolder } from "./types"
 
 // Log errors and send a notification to the client
 export const handleErrors = (message: string, error: any, socket: Socket) => {
-  console.error(message, error);
-  socket.emit("error", `${message} ${error.message ?? error}`);
-};
+  console.error(message, error)
+  socket.emit("error", `${message} ${error.message ?? error}`)
+}
 
 // Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
@@ -64,10 +64,10 @@ if (!process.env.DOKKU_KEY)
 const dokkuClient =
   process.env.DOKKU_HOST && process.env.DOKKU_KEY && process.env.DOKKU_USERNAME
     ? new DokkuClient({
-      host: process.env.DOKKU_HOST,
-      username: process.env.DOKKU_USERNAME,
-      privateKey: fs.readFileSync(process.env.DOKKU_KEY),
-    })
+        host: process.env.DOKKU_HOST,
+        username: process.env.DOKKU_USERNAME,
+        privateKey: fs.readFileSync(process.env.DOKKU_KEY),
+      })
     : null
 dokkuClient?.connect()
 
@@ -75,9 +75,9 @@ dokkuClient?.connect()
 const gitClient =
   process.env.DOKKU_HOST && process.env.DOKKU_KEY
     ? new SecureGitClient(
-      `dokku@${process.env.DOKKU_HOST}`,
-      process.env.DOKKU_KEY
-    )
+        `dokku@${process.env.DOKKU_HOST}`,
+        process.env.DOKKU_KEY
+      )
     : null
 
 // Add this near the top of the file, after other initializations
@@ -110,21 +110,23 @@ io.on("connection", async (socket) => {
 
     try {
       // Create or retrieve the sandbox manager for the given sandbox ID
-      const sandbox = sandboxes[data.sandboxId] ?? new Sandbox(
-        data.sandboxId,
-        data.type,
-        {
-          aiWorker, dokkuClient, gitClient,
-        }
-      )
+      const sandbox =
+        sandboxes[data.sandboxId] ??
+        new Sandbox(data.sandboxId, data.type, {
+          aiWorker,
+          dokkuClient,
+          gitClient,
+        })
       sandboxes[data.sandboxId] = sandbox
 
       // This callback recieves an update when the file list changes, and notifies all relevant connections.
       const sendFileNotifications = (files: (TFolder | TFile)[]) => {
-        connections.connectionsForSandbox(data.sandboxId).forEach((socket: Socket) => {
-          socket.emit("loaded", files);
-        });
-      };
+        connections
+          .connectionsForSandbox(data.sandboxId)
+          .forEach((socket: Socket) => {
+            socket.emit("loaded", files)
+          })
+      }
 
       // Initialize the sandbox container
       // The file manager and terminal managers will be set up if they have been closed
@@ -134,26 +136,35 @@ io.on("connection", async (socket) => {
       // Register event handlers for the sandbox
       // For each event handler, listen on the socket for that event
       // Pass connection-specific information to the handlers
-      Object.entries(sandbox.handlers({
-        userId: data.userId,
-        isOwner: data.isOwner,
-        socket
-      })).forEach(([event, handler]) => {
-        socket.on(event, async (options: any, callback?: (response: any) => void) => {
-          try {
-            const result = await handler(options)
-            callback?.(result);
-          } catch (e: any) {
-            handleErrors(`Error processing event "${event}":`, e, socket);
+      Object.entries(
+        sandbox.handlers({
+          userId: data.userId,
+          isOwner: data.isOwner,
+          socket,
+        })
+      ).forEach(([event, handler]) => {
+        socket.on(
+          event,
+          async (options: any, callback?: (response: any) => void) => {
+            try {
+              const result = await handler(options)
+              callback?.(result)
+            } catch (e: any) {
+              handleErrors(`Error processing event "${event}":`, e, socket)
+            }
           }
-        });
-      });
+        )
+      })
 
       // Handle disconnection event
       socket.on("disconnect", async () => {
         try {
           // Deregister the connection
-          connections.removeConnectionForSandbox(socket, data.sandboxId, data.isOwner)
+          connections.removeConnectionForSandbox(
+            socket,
+            data.sandboxId,
+            data.isOwner
+          )
 
           // If the owner has disconnected from all sockets, close open terminals and file watchers.o
           // The sandbox itself will timeout after the heartbeat stops.
@@ -165,16 +176,14 @@ io.on("connection", async (socket) => {
             )
           }
         } catch (e: any) {
-          handleErrors("Error disconnecting:", e, socket);
+          handleErrors("Error disconnecting:", e, socket)
         }
       })
-
     } catch (e: any) {
-      handleErrors(`Error initializing sandbox ${data.sandboxId}:`, e, socket);
+      handleErrors(`Error initializing sandbox ${data.sandboxId}:`, e, socket)
     }
-
   } catch (e: any) {
-    handleErrors("Error connecting:", e, socket);
+    handleErrors("Error connecting:", e, socket)
   }
 })
 

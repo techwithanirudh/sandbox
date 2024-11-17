@@ -23,7 +23,11 @@ function generateFileStructure(paths: string[]): (TFolder | TFile)[] {
         }
       } else {
         if (isFile) {
-          const file: TFile = { id: `/${parts.join("/")}`, type: "file", name: part }
+          const file: TFile = {
+            id: `/${parts.join("/")}`,
+            type: "file",
+            name: part,
+          }
           current.children.push(file)
         } else {
           const folder: TFolder = {
@@ -75,7 +79,9 @@ export class FileManager {
 
       if (isFile) {
         const fileId = `/${parts.join("/")}`
-        const data = await RemoteFileStorage.fetchFileContent(`projects/${this.sandboxId}${fileId}`)
+        const data = await RemoteFileStorage.fetchFileContent(
+          `projects/${this.sandboxId}${fileId}`
+        )
         fileData.push({ id: fileId, data })
       }
     }
@@ -91,7 +97,7 @@ export class FileManager {
   // Convert remote file path to local file path
   private getLocalFileId(remoteId: string): string | undefined {
     const allParts = remoteId.split("/")
-    if (allParts[1] !== this.sandboxId) return undefined;
+    if (allParts[1] !== this.sandboxId) return undefined
     return allParts.slice(2).join("/")
   }
 
@@ -99,7 +105,7 @@ export class FileManager {
   private getLocalFileIds(remoteIds: string[]): string[] {
     return remoteIds
       .map(this.getLocalFileId.bind(this))
-      .filter((id) => id !== undefined);
+      .filter((id) => id !== undefined)
   }
 
   // Download files from remote storage
@@ -120,7 +126,6 @@ export class FileManager {
 
   // Initialize the FileManager
   async initialize() {
-
     // Download files from remote file storage
     await this.updateFileStructure()
     await this.updateFileData()
@@ -141,10 +146,14 @@ export class FileManager {
     await Promise.all(promises)
 
     // Reload file list from the container to include template files
-    const result = await this.sandbox.commands.run(`find "${this.dirName}" -type f`); // List all files recursively
-    const localPaths = result.stdout.split('\n').filter(path => path); // Split the output into an array and filter out empty strings
-    const relativePaths = localPaths.map(filePath => path.posix.relative(this.dirName, filePath)); // Convert absolute paths to relative paths
-    this.files = generateFileStructure(relativePaths);
+    const result = await this.sandbox.commands.run(
+      `find "${this.dirName}" -type f`
+    ) // List all files recursively
+    const localPaths = result.stdout.split("\n").filter((path) => path) // Split the output into an array and filter out empty strings
+    const relativePaths = localPaths.map((filePath) =>
+      path.posix.relative(this.dirName, filePath)
+    ) // Convert absolute paths to relative paths
+    this.files = generateFileStructure(relativePaths)
 
     // Make the logged in user the owner of all project files
     this.fixPermissions()
@@ -169,9 +178,7 @@ export class FileManager {
   // Change the owner of the project directory to user
   private async fixPermissions() {
     try {
-      await this.sandbox.commands.run(
-        `sudo chown -R user "${this.dirName}"`
-      )
+      await this.sandbox.commands.run(`sudo chown -R user "${this.dirName}"`)
     } catch (e: any) {
       console.log("Failed to fix permissions: " + e)
     }
@@ -193,7 +200,10 @@ export class FileManager {
             // This is the absolute file path in the container
             const containerFilePath = path.posix.join(directory, event.name)
             // This is the file path relative to the project directory
-            const sandboxFilePath = removeDirName(containerFilePath, this.dirName)
+            const sandboxFilePath = removeDirName(
+              containerFilePath,
+              this.dirName
+            )
             // This is the directory being watched relative to the project directory
             const sandboxDirectory = removeDirName(directory, this.dirName)
 
@@ -218,16 +228,16 @@ export class FileManager {
 
               const newItem = isDir
                 ? ({
-                  id: sandboxFilePath,
-                  name: event.name,
-                  type: "folder",
-                  children: [],
-                } as TFolder)
+                    id: sandboxFilePath,
+                    name: event.name,
+                    type: "folder",
+                    children: [],
+                  } as TFolder)
                 : ({
-                  id: sandboxFilePath,
-                  name: event.name,
-                  type: "file",
-                } as TFile)
+                    id: sandboxFilePath,
+                    name: event.name,
+                    type: "file",
+                  } as TFile)
 
               if (folder) {
                 // If the folder exists, add the new item (file/folder) as a child
@@ -361,7 +371,9 @@ export class FileManager {
 
   // Get folder content
   async getFolder(folderId: string): Promise<string[]> {
-    const remotePaths = await RemoteFileStorage.getFolder(this.getRemoteFileId(folderId))
+    const remotePaths = await RemoteFileStorage.getFolder(
+      this.getRemoteFileId(folderId)
+    )
     return this.getLocalFileIds(remotePaths)
   }
 
@@ -400,7 +412,11 @@ export class FileManager {
     fileData.id = newFileId
     file.id = newFileId
 
-    await RemoteFileStorage.renameFile(this.getRemoteFileId(fileId), this.getRemoteFileId(newFileId), fileData.data)
+    await RemoteFileStorage.renameFile(
+      this.getRemoteFileId(fileId),
+      this.getRemoteFileId(newFileId),
+      fileData.data
+    )
     return this.updateFileStructure()
   }
 
@@ -465,7 +481,11 @@ export class FileManager {
 
     await this.moveFileInContainer(fileId, newFileId)
     await this.fixPermissions()
-    await RemoteFileStorage.renameFile(this.getRemoteFileId(fileId), this.getRemoteFileId(newFileId), fileData.data)
+    await RemoteFileStorage.renameFile(
+      this.getRemoteFileId(fileId),
+      this.getRemoteFileId(newFileId),
+      fileData.data
+    )
 
     fileData.id = newFileId
     file.id = newFileId
@@ -477,9 +497,7 @@ export class FileManager {
     if (!file) return this.files
 
     await this.sandbox.files.remove(path.posix.join(this.dirName, fileId))
-    this.fileData = this.fileData.filter(
-      (f) => f.id !== fileId
-    )
+    this.fileData = this.fileData.filter((f) => f.id !== fileId)
 
     await RemoteFileStorage.deleteFile(this.getRemoteFileId(fileId))
     return this.updateFileStructure()
@@ -487,14 +505,14 @@ export class FileManager {
 
   // Delete a folder
   async deleteFolder(folderId: string): Promise<(TFolder | TFile)[]> {
-    const files = await RemoteFileStorage.getFolder(this.getRemoteFileId(folderId))
+    const files = await RemoteFileStorage.getFolder(
+      this.getRemoteFileId(folderId)
+    )
 
     await Promise.all(
       files.map(async (file) => {
         await this.sandbox.files.remove(path.posix.join(this.dirName, file))
-        this.fileData = this.fileData.filter(
-          (f) => f.id !== file
-        )
+        this.fileData = this.fileData.filter((f) => f.id !== file)
         await RemoteFileStorage.deleteFile(this.getRemoteFileId(file))
       })
     )
