@@ -289,6 +289,10 @@ cd sandbox
 git checkout -b my-new-branch
 ```
 
+### Code formatting
+
+This repository uses [Prettier](https://marketplace.cursorapi.com/items?itemName=esbenp.prettier-vscode) for code formatting, which you will be prompted to install when you open the project. The formatting rules are specified in [.prettierrc](.prettierrc).
+
 ### Commit convention
 
 Before you create a Pull Request, please check that you use the [Conventional Commits format](https://www.conventionalcommits.org/en/v1.0.0/)
