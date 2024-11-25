@@ -263,10 +263,11 @@ export default {
 					generations: z.number().optional(),
 					tier: z.enum(["FREE", "PRO", "ENTERPRISE"]).optional(),
 					tierExpiresAt: z.number().optional(),
+					lastResetDate: z.number().optional(),
 				})
 
 				const body = await request.json()
-				const { id, name, email, username, avatarUrl, createdAt, generations, tier, tierExpiresAt } = userSchema.parse(body)
+				const { id, name, email, username, avatarUrl, createdAt, generations, tier, tierExpiresAt, lastResetDate } = userSchema.parse(body)
 
 				const res = await db
 					.insert(user)
@@ -280,6 +281,7 @@ export default {
 						generations,
 						tier,
 						tierExpiresAt,
+						lastResetDate,
 					})
 					.returning()
 					.get()

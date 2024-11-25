@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "5",
-      "when": 1732400315508,
-      "tag": "0000_milky_hardball",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1732408530094,
-      "tag": "0001_freezing_supreme_intelligence",
+      "when": 1732568535771,
+      "tag": "0000_rapid_korath",
       "breakpoints": true
     }
   ]
