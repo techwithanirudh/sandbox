@@ -36,11 +36,6 @@ export default function RunButtonModal({
     }
   }, [terminals, isRunning])
   // commands to run in the terminal
-  const COMMANDS = {
-    streamlit: "./venv/bin/streamlit run main.py --server.runOnSave true",
-    php: "echo http://localhost:80 && npx vite",
-    default: "npm run dev",
-  } as const
   const handleRun = async () => {
     if (isRunning && lastCreatedTerminalRef.current) {
       await closeTerminal(lastCreatedTerminalRef.current)

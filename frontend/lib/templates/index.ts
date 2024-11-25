@@ -244,5 +244,47 @@ export interface TemplateConfig {
         "build": "vite build",
         "preview": "vite preview"
       }
+    },
+    // PHP template config
+    php: {
+      id: "php",
+      name: "PHP",
+      runCommand: "echo http://localhost:80 && npx vite",
+      fileStructure: {
+        "index.php": {
+          purpose: "entry",
+          description: "Main PHP entry point"
+        },
+        "package.json": {
+          purpose: "config",
+          description: "Frontend dependencies and scripts"
+        },
+        "package-lock.json": {
+          purpose: "config",
+          description: "Locked dependency versions"
+        },
+        "vite.config.js": {
+          purpose: "config",
+          description: "Vite configuration for frontend assets"
+        },
+        "node_modules/": {
+          purpose: "dependencies",
+          description: "Frontend dependency files"
+        }
+      },
+      conventions: [
+        "Follow PSR-12 coding standards",
+        "Use modern PHP 8+ features",
+        "Organize assets with Vite",
+        "Keep PHP logic separate from presentation"
+      ],
+      dependencies: {
+        "vite": "^5.0.0"
+      },
+      scripts: {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview"
+      }
     }
 }
