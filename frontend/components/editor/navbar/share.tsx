@@ -143,11 +143,7 @@ export default function ShareSandboxModal({
               </DialogHeader>
               <div className="space-y-2">
                 {shared.map((user) => (
-                  <SharedUser
-                    key={user.id}
-                    user={user}
-                    sandboxId={data.id}
-                  />
+                  <SharedUser key={user.id} user={user} sandboxId={data.id} />
                 ))}
               </div>
             </div>

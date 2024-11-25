@@ -1,28 +1,29 @@
-import * as monaco from 'monaco-editor'
+import { TemplateConfig } from "@/lib/templates"
 import { TFile, TFolder } from "@/lib/types"
-import { Socket } from 'socket.io-client';
+import * as monaco from "monaco-editor"
+import { Socket } from "socket.io-client"
 
 // Allowed file types for context tabs
 export const ALLOWED_FILE_TYPES = {
   // Text files
-  'text/plain': true,
-  'text/markdown': true,
-  'text/csv': true,
+  "text/plain": true,
+  "text/markdown": true,
+  "text/csv": true,
   // Code files
-  'application/json': true,
-  'text/javascript': true,
-  'text/typescript': true,
-  'text/html': true,
-  'text/css': true,
+  "application/json": true,
+  "text/javascript": true,
+  "text/typescript": true,
+  "text/html": true,
+  "text/css": true,
   // Documents
-  'application/pdf': true,
+  "application/pdf": true,
   // Images
-  'image/jpeg': true,
-  'image/png': true,
-  'image/gif': true,
-  'image/webp': true,
-  'image/svg+xml': true,
-} as const;
+  "image/jpeg": true,
+  "image/png": true,
+  "image/gif": true,
+  "image/webp": true,
+  "image/svg+xml": true,
+} as const
 
 // Message interface
 export interface Message {
@@ -45,9 +46,16 @@ export interface AIChatProps {
   activeFileContent: string
   activeFileName: string
   onClose: () => void
-  editorRef: React.MutableRefObject<monaco.editor.IStandaloneCodeEditor | undefined>
-  lastCopiedRangeRef: React.MutableRefObject<{ startLine: number; endLine: number } | null>
+  editorRef: React.MutableRefObject<
+    monaco.editor.IStandaloneCodeEditor | undefined
+  >
+  lastCopiedRangeRef: React.MutableRefObject<{
+    startLine: number
+    endLine: number
+  } | null>
   files: (TFile | TFolder)[]
+  templateType: string
+  templateConfig?: TemplateConfig
 }
 
 // Chat input props interface
@@ -58,11 +66,27 @@ export interface ChatInputProps {
   handleSend: (useFullContext?: boolean) => void
   handleStopGeneration: () => void
   onImageUpload: (file: File) => void
-  addContextTab: (type: string, title: string, content: string, lineRange?: { start: number, end: number }) => void
+  addContextTab: (
+    type: string,
+    title: string,
+    content: string,
+    lineRange?: { start: number; end: number }
+  ) => void
   activeFileName?: string
-  editorRef: React.MutableRefObject<monaco.editor.IStandaloneCodeEditor | undefined>
-  lastCopiedRangeRef: React.MutableRefObject<{ startLine: number; endLine: number } | null>
-  contextTabs: { id: string; type: string; title: string; content: string; lineRange?: { start: number; end: number } }[]
+  editorRef: React.MutableRefObject<
+    monaco.editor.IStandaloneCodeEditor | undefined
+  >
+  lastCopiedRangeRef: React.MutableRefObject<{
+    startLine: number
+    endLine: number
+  } | null>
+  contextTabs: {
+    id: string
+    type: string
+    title: string
+    content: string
+    lineRange?: { start: number; end: number }
+  }[]
   onRemoveTab: (id: string) => void
   textareaRef: React.RefObject<HTMLTextAreaElement>
 }
@@ -74,7 +98,11 @@ export interface MessageProps {
     content: string
     context?: string
   }
-  setContext: (context: string | null, name: string, range?: { start: number, end: number }) => void
+  setContext: (
+    context: string | null,
+    name: string,
+    range?: { start: number; end: number }
+  ) => void
   setIsContextExpanded: (isExpanded: boolean) => void
   socket: Socket | null
 }

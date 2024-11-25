@@ -1,6 +1,6 @@
 import React from "react"
 
-// Stringify content for chat message component 
+// Stringify content for chat message component
 export const stringifyContent = (
   content: any,
   seen = new WeakSet()
@@ -66,19 +66,19 @@ export const stringifyContent = (
   return String(content)
 }
 
-// Copy to clipboard for chat message component  
+// Copy to clipboard for chat message component
 export const copyToClipboard = (
   text: string,
   setCopiedText: (text: string | null) => void
 ) => {
-  // Copy text to clipboard for chat message component 
+  // Copy text to clipboard for chat message component
   navigator.clipboard.writeText(text).then(() => {
     setCopiedText(text)
     setTimeout(() => setCopiedText(null), 2000)
   })
 }
 
-// Handle send for chat message component  
+// Handle send for chat message component
 export const handleSend = async (
   input: string,
   context: string | null,
@@ -89,27 +89,31 @@ export const handleSend = async (
   setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>,
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
   abortControllerRef: React.MutableRefObject<AbortController | null>,
-  activeFileContent: string
+  activeFileContent: string,
+  isEditMode: boolean = false,
+  templateType: string
 ) => {
   // Return if input is empty and context is null
-  if (input.trim() === "" && !context) return 
+  if (input.trim() === "" && !context) return
 
-  // Get timestamp for chat message component 
-  const timestamp = new Date().toLocaleTimeString('en-US', {
-    hour12: true,
-    hour: '2-digit',
-    minute: '2-digit'
-  }).replace(/(\d{2}):(\d{2})/, '$1:$2')
+  // Get timestamp for chat message component
+  const timestamp = new Date()
+    .toLocaleTimeString("en-US", {
+      hour12: true,
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    .replace(/(\d{2}):(\d{2})/, "$1:$2")
 
-  // Create user message for chat message component 
+  // Create user message for chat message component
   const userMessage = {
     role: "user" as const,
     content: input,
     context: context || undefined,
-    timestamp: timestamp
+    timestamp: timestamp,
   }
 
-  // Update messages for chat message component 
+  // Update messages for chat message component
   const updatedMessages = [...messages, userMessage]
   setMessages(updatedMessages)
   setInput("")
@@ -120,24 +124,25 @@ export const handleSend = async (
   abortControllerRef.current = new AbortController()
 
   try {
-    // Create anthropic messages for chat message component 
+    // Create anthropic messages for chat message component
     const anthropicMessages = updatedMessages.map((msg) => ({
       role: msg.role === "user" ? "human" : "assistant",
       content: msg.content,
     }))
 
-    // Fetch AI response for chat message component 
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_AI_WORKER_URL}/api`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+    // Fetch AI response for chat message component
+    const response = await fetch("/api/ai", 
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
         },
         body: JSON.stringify({
           messages: anthropicMessages,
           context: context || undefined,
           activeFileContent: activeFileContent,
+          isEditMode: isEditMode,
+          templateType: templateType,
         }),
         signal: abortControllerRef.current.signal,
       }
@@ -145,22 +150,23 @@ export const handleSend = async (
 
     // Throw error if response is not ok
     if (!response.ok) {
-      throw new Error("Failed to get AI response")
+      const error = await response.text()
+      throw new Error(error)
     }
 
-    // Get reader for chat message component 
+    // Get reader for chat message component
     const reader = response.body?.getReader()
     const decoder = new TextDecoder()
     const assistantMessage = { role: "assistant" as const, content: "" }
     setMessages([...updatedMessages, assistantMessage])
     setIsLoading(false)
 
-    // Initialize buffer for chat message component 
+    // Initialize buffer for chat message component
     let buffer = ""
     const updateInterval = 100
     let lastUpdateTime = Date.now()
 
-    // Read response from reader for chat message component 
+    // Read response from reader for chat message component
     if (reader) {
       while (true) {
         const { done, value } = await reader.read()
@@ -179,7 +185,7 @@ export const handleSend = async (
         }
       }
 
-      // Update messages for chat message component 
+      // Update messages for chat message component
       setMessages((prev) => {
         const updatedMessages = [...prev]
         const lastMessage = updatedMessages[updatedMessages.length - 1]
@@ -188,14 +194,14 @@ export const handleSend = async (
       })
     }
   } catch (error: any) {
-    // Handle abort error for chat message component 
+    // Handle abort error for chat message component
     if (error.name === "AbortError") {
       console.log("Generation aborted")
     } else {
       console.error("Error fetching AI response:", error)
       const errorMessage = {
         role: "assistant" as const,
-        content: "Sorry, I encountered an error. Please try again.",
+        content: error.message || "Sorry, I encountered an error. Please try again.",
       }
       setMessages((prev) => [...prev, errorMessage])
     }
@@ -206,7 +212,7 @@ export const handleSend = async (
   }
 }
 
-// Handle stop generation for chat message component 
+// Handle stop generation for chat message component
 export const handleStopGeneration = (
   abortControllerRef: React.MutableRefObject<AbortController | null>
 ) => {
@@ -215,21 +221,21 @@ export const handleStopGeneration = (
   }
 }
 
-// Check if text looks like code for chat message component 
+// Check if text looks like code for chat message component
 export const looksLikeCode = (text: string): boolean => {
   const codeIndicators = [
-    /^import\s+/m,          // import statements
-    /^function\s+/m,        // function declarations
-    /^class\s+/m,           // class declarations
-    /^const\s+/m,           // const declarations
-    /^let\s+/m,             // let declarations
-    /^var\s+/m,             // var declarations
-    /[{}\[\]();]/,          // common code syntax
-    /^\s*\/\//m,            // comments
-    /^\s*\/\*/m,            // multi-line comments
-    /=>/,                   // arrow functions
-    /^export\s+/m,          // export statements
-  ];
+    /^import\s+/m, // import statements
+    /^function\s+/m, // function declarations
+    /^class\s+/m, // class declarations
+    /^const\s+/m, // const declarations
+    /^let\s+/m, // let declarations
+    /^var\s+/m, // var declarations
+    /[{}\[\]();]/, // common code syntax
+    /^\s*\/\//m, // comments
+    /^\s*\/\*/m, // multi-line comments
+    /=>/, // arrow functions
+    /^export\s+/m, // export statements
+  ]
 
-  return codeIndicators.some(pattern => pattern.test(text));
-};
+  return codeIndicators.some((pattern) => pattern.test(text))
+}

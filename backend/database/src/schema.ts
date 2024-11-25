@@ -16,6 +16,9 @@ export const user = sqliteTable("user", {
 		sql`CURRENT_TIMESTAMP`
 	),
 	generations: integer("generations").default(0),
+	tier: text("tier", { enum: ["FREE", "PRO", "ENTERPRISE"] }).default("FREE"),
+	tierExpiresAt: integer("tierExpiresAt"),
+	lastResetDate: integer("lastResetDate"),
 })
 
 export type User = typeof user.$inferSelect

@@ -25,6 +25,7 @@ export default function Dashboard({
     type: "react" | "node"
     author: string
     sharedOn: Date
+    authorAvatarUrl?: string
   }[]
 }) {
   const [screen, setScreen] = useState<TScreen>("projects")
@@ -77,14 +78,14 @@ export default function Dashboard({
               <FolderDot className="w-4 h-4 mr-2" />
               My Projects
             </Button>
-            <Button
+            {/* <Button
               variant="ghost"
               onClick={() => setScreen("shared")}
               className={activeScreen("shared")}
             >
               <Users className="w-4 h-4 mr-2" />
               Shared With Me
-            </Button>
+            </Button> */}
             {/* <Button
               variant="ghost"
               onClick={() => setScreen("settings")}
@@ -110,7 +111,7 @@ export default function Dashboard({
               className="justify-start font-normal text-muted-foreground"
             >
               <HelpCircle className="w-4 h-4 mr-2" />
-              About
+              Help
             </Button>
           </div>
         </div>
@@ -121,7 +122,12 @@ export default function Dashboard({
             ) : null}
           </>
         ) : screen === "shared" ? (
-          <DashboardSharedWithMe shared={shared} />
+          <DashboardSharedWithMe
+            shared={shared.map((item) => ({
+              ...item,
+              authorAvatarUrl: item.authorAvatarUrl || "",
+            }))}
+          />
         ) : screen === "settings" ? null : null}
       </div>
     </>

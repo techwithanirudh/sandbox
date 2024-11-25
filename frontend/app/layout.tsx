@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner"
 import { ThemeProvider } from "@/components/ui/theme-provider"
 import { PreviewProvider } from "@/context/PreviewContext"
-import { SocketProvider } from '@/context/SocketContext'
+import { SocketProvider } from "@/context/SocketContext"
 import { ClerkProvider } from "@clerk/nextjs"
 import { Analytics } from "@vercel/analytics/react"
 import { GeistMono } from "geist/font/mono"

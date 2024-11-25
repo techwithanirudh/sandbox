@@ -16,7 +16,7 @@ export const projectTemplates: {
     id: "vanillajs",
     name: "HTML/JS",
     icon: "/project-icons/more.svg",
-    description: "More coming soon, feel free to contribute on GitHub",
+    description: "A simple HTML/JS project for building web apps",
     disabled: false,
   },
   {
@@ -32,5 +32,12 @@ export const projectTemplates: {
     icon: "/project-icons/python.svg",
     description: "A faster way to build and share data apps",
     disabled: false,
+  },
+  {
+    id: "php",
+    name: "PHP",
+    description: "PHP development environment",
+    icon: "/project-icons/php.svg",
+    disabled: false
   },
 ]

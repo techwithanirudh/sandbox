@@ -198,11 +198,13 @@ DOKKU_KEY=
 
 Anyone can contribute a custom template for integration in Sandbox. Since Sandbox is built on E2B, there is no limitation to what langauge or runtime a Sandbox can use.
 
-Currently there are four templates:
+Currently there are five templates:
+
 - [jamesmurdza/dokku-reactjs-template](https://github.com/jamesmurdza/dokku-reactjs-template)
 - [jamesmurdza/dokku-vanillajs-template](https://github.com/jamesmurdza/dokku-vanillajs-template)
 - [jamesmurdza/dokku-nextjs-template](https://github.com/jamesmurdza/dokku-nextjs-template)
 - [jamesmurdza/dokku-streamlit-template](https://github.com/jamesmurdza/dokku-streamlit-template)
+- [omarrwd/dokku-php-template](https://github.com/omarrwd/dokku-php-template)
 
 To create your own template, you can fork one of the above templates or start with a new blank repository. The template should have at least an `e2b.Dockerfile`, which is used by E2B to create the development environment. Optionally, a `Dockerfile` can be added which will be used to create the project build when it is deployed.
 
@@ -236,6 +238,7 @@ If you've done this and it works, let us know and we'll add your template to San
 Note: In the future, we will add a way to specify the command triggered by the "Run" button (e.g. "npm run dev").
 
 For more information, see:
+
 - [Custom E2B Sandboxes](https://e2b.dev/docs/sandbox-template)
 - [Dokku Builders](https://dokku.com/docs/deployment/builders/builder-management/)
 
@@ -260,13 +263,13 @@ backend/
 └── ai
 ```
 
-| Path               | Description                                                  |
-| ------------------ | ------------------------------------------------------------ |
-| `frontend`         | The Next.js application for the frontend.                    |
-| `backend/server`   | The Express websocket server.                                |
-| `backend/database` | API for interfacing with the D1 database (SQLite).           |
+| Path               | Description                                                                |
+| ------------------ | -------------------------------------------------------------------------- |
+| `frontend`         | The Next.js application for the frontend.                                  |
+| `backend/server`   | The Express websocket server.                                              |
+| `backend/database` | API for interfacing with the D1 database (SQLite).                         |
 | `backend/storage`  | API for interfacing with R2 storage. Service-bound to `/backend/database`. |
-| `backend/ai`       | API for making requests to Workers AI .                      |
+| `backend/ai`       | API for making requests to Workers AI .                                    |
 
 ### Development
 
@@ -286,6 +289,10 @@ cd sandbox
 ```bash
 git checkout -b my-new-branch
 ```
+
+### Code formatting
+
+This repository uses [Prettier](https://marketplace.cursorapi.com/items?itemName=esbenp.prettier-vscode) for code formatting, which you will be prompted to install when you open the project. The formatting rules are specified in [.prettierrc](.prettierrc).
 
 ### Commit convention
 

@@ -38,7 +38,7 @@
   "csl": "xml",
   "cson": "coffeescript",
   "csproj": "xml",
-  "css":"css",
+  "css": "css",
   "ct": "xml",
   "ctp": "php",
   "cxx": "cpp",

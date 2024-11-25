@@ -1,21 +1,26 @@
+import { CornerUpLeft } from "lucide-react"
 import { Components } from "react-markdown"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism"
 import { Button } from "../../../ui/button"
-import { CornerUpLeft } from "lucide-react"
 import { stringifyContent } from "./chatUtils"
 
-// Create markdown components for chat message component 
+// Create markdown components for chat message component
 export const createMarkdownComponents = (
   renderCopyButton: (text: any) => JSX.Element,
   renderMarkdownElement: (props: any) => JSX.Element,
   askAboutCode: (code: any) => void
 ): Components => ({
-  code: ({ node, className, children, ...props }: {
-    node?: import('hast').Element,
-    className?: string,
-    children?: React.ReactNode,
-    [key: string]: any,
+  code: ({
+    node,
+    className,
+    children,
+    ...props
+  }: {
+    node?: import("hast").Element
+    className?: string
+    children?: React.ReactNode
+    [key: string]: any
   }) => {
     const match = /language-(\w+)/.exec(className || "")
 
@@ -55,25 +60,30 @@ export const createMarkdownComponents = (
         </div>
       </div>
     ) : (
-      <code className={className} {...props}>{children}</code>
+      <code className={className} {...props}>
+        {children}
+      </code>
     )
   },
-  // Render markdown elements 
-  p: ({ node, children, ...props }) => renderMarkdownElement({ node, children, ...props }),
-  h1: ({ node, children, ...props }) => renderMarkdownElement({ node, children, ...props }),
-  h2: ({ node, children, ...props }) => renderMarkdownElement({ node, children, ...props }),
-  h3: ({ node, children, ...props }) => renderMarkdownElement({ node, children, ...props }),
-  h4: ({ node, children, ...props }) => renderMarkdownElement({ node, children, ...props }),
-  h5: ({ node, children, ...props }) => renderMarkdownElement({ node, children, ...props }),
-  h6: ({ node, children, ...props }) => renderMarkdownElement({ node, children, ...props }),
+  // Render markdown elements
+  p: ({ node, children, ...props }) =>
+    renderMarkdownElement({ node, children, ...props }),
+  h1: ({ node, children, ...props }) =>
+    renderMarkdownElement({ node, children, ...props }),
+  h2: ({ node, children, ...props }) =>
+    renderMarkdownElement({ node, children, ...props }),
+  h3: ({ node, children, ...props }) =>
+    renderMarkdownElement({ node, children, ...props }),
+  h4: ({ node, children, ...props }) =>
+    renderMarkdownElement({ node, children, ...props }),
+  h5: ({ node, children, ...props }) =>
+    renderMarkdownElement({ node, children, ...props }),
+  h6: ({ node, children, ...props }) =>
+    renderMarkdownElement({ node, children, ...props }),
   ul: (props) => (
-    <ul className="list-disc pl-6 mb-4 space-y-2">
-      {props.children}
-    </ul>
+    <ul className="list-disc pl-6 mb-4 space-y-2">{props.children}</ul>
   ),
   ol: (props) => (
-    <ol className="list-decimal pl-6 mb-4 space-y-2">
-      {props.children}
-    </ol>
+    <ol className="list-decimal pl-6 mb-4 space-y-2">{props.children}</ol>
   ),
 })

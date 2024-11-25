@@ -1,14 +1,14 @@
-import { X } from "lucide-react"
+import { useSocket } from "@/context/SocketContext"
+import { TFile } from "@/lib/types"
+import { X, ChevronDown } from "lucide-react"
+import { nanoid } from "nanoid"
 import { useEffect, useRef, useState } from "react"
 import LoadingDots from "../../ui/LoadingDots"
 import ChatInput from "./ChatInput"
 import ChatMessage from "./ChatMessage"
 import ContextTabs from "./ContextTabs"
 import { handleSend, handleStopGeneration } from "./lib/chatUtils"
-import { nanoid } from 'nanoid'
-import { TFile } from "@/lib/types"
-import { useSocket } from "@/context/SocketContext"
-import { Message, ContextTab, AIChatProps } from './types'
+import { AIChatProps, ContextTab, Message } from "./types"
 
 export default function AIChat({
   activeFileContent,
@@ -17,6 +17,7 @@ export default function AIChat({
   editorRef,
   lastCopiedRangeRef,
   files,
+  templateType,
 }: AIChatProps) {
   // Initialize socket and messages
   const { socket } = useSocket()
@@ -38,65 +39,96 @@ export default function AIChat({
   // Initialize textarea ref
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Scroll to bottom of chat when messages change
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+  // state variables for auto scroll and scroll button
+  const [autoScroll, setAutoScroll] = useState(true)
+  const [showScrollButton, setShowScrollButton] = useState(false)
 
-  // Scroll to bottom of chat when messages change
-  const scrollToBottom = () => {
-    if (chatContainerRef.current) {
-      setTimeout(() => {
-        chatContainerRef.current?.scrollTo({
-          top: chatContainerRef.current.scrollHeight,
-          behavior: "smooth",
-        })
-      }, 100)
+  // scroll to bottom of chat when messages change
+  useEffect(() => {
+    if (autoScroll) {
+      scrollToBottom()
     }
+  }, [messages, autoScroll])
+
+  // scroll to bottom of chat when messages change
+  const scrollToBottom = (force: boolean = false) => {
+    if (!chatContainerRef.current || (!autoScroll && !force)) return
+    
+    chatContainerRef.current.scrollTo({
+      top: chatContainerRef.current.scrollHeight,
+      behavior: force ? "smooth" : "auto",
+    })
   }
 
+  // function to handle scroll events
+  const handleScroll = () => {
+    if (!chatContainerRef.current) return
+    
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current
+    const isAtBottom = Math.abs(scrollHeight - scrollTop - clientHeight) < 50
+    
+    setAutoScroll(isAtBottom)
+    setShowScrollButton(!isAtBottom)
+  }
+
+  // scroll event listener
+  useEffect(() => {
+    const container = chatContainerRef.current
+    if (container) {
+      container.addEventListener('scroll', handleScroll)
+      return () => container.removeEventListener('scroll', handleScroll)
+    }
+  }, [])
+
   // Add context tab to context tabs
-  const addContextTab = (type: string, name: string, content: string, lineRange?: { start: number; end: number }) => {
+  const addContextTab = (
+    type: string,
+    name: string,
+    content: string,
+    lineRange?: { start: number; end: number }
+  ) => {
     const newTab = {
       id: nanoid(),
       type: type as "file" | "code" | "image",
       name,
       content,
-      lineRange
+      lineRange,
     }
-    setContextTabs(prev => [...prev, newTab])
+    setContextTabs((prev) => [...prev, newTab])
   }
 
   // Remove context tab from context tabs
   const removeContextTab = (id: string) => {
-    setContextTabs(prev => prev.filter(tab => tab.id !== id))
+    setContextTabs((prev) => prev.filter((tab) => tab.id !== id))
   }
 
   // Add file to context tabs
   const handleAddFile = (tab: ContextTab) => {
-    setContextTabs(prev => [...prev, tab])
+    setContextTabs((prev) => [...prev, tab])
   }
 
   // Format code content to remove starting and ending code block markers if they exist
   const formatCodeContent = (content: string) => {
-    return content.replace(/^```[\w-]*\n/, '').replace(/\n```$/, '')
+    return content.replace(/^```[\w-]*\n/, "").replace(/\n```$/, "")
   }
 
   // Get combined context from context tabs
   const getCombinedContext = () => {
-    if (contextTabs.length === 0) return ''
-    
-    return contextTabs.map(tab => {
-      if (tab.type === 'file') {
-        const fileExt = tab.name.split('.').pop() || 'txt'
-        const cleanContent = formatCodeContent(tab.content)
-        return `File ${tab.name}:\n\`\`\`${fileExt}\n${cleanContent}\n\`\`\``
-      } else if (tab.type === 'code') {
-        const cleanContent = formatCodeContent(tab.content)
-        return `Code from ${tab.name}:\n\`\`\`typescript\n${cleanContent}\n\`\`\``
-      }
-      return `${tab.name}:\n${tab.content}`
-    }).join('\n\n')
+    if (contextTabs.length === 0) return ""
+
+    return contextTabs
+      .map((tab) => {
+        if (tab.type === "file") {
+          const fileExt = tab.name.split(".").pop() || "txt"
+          const cleanContent = formatCodeContent(tab.content)
+          return `File ${tab.name}:\n\`\`\`${fileExt}\n${cleanContent}\n\`\`\``
+        } else if (tab.type === "code") {
+          const cleanContent = formatCodeContent(tab.content)
+          return `Code from ${tab.name}:\n\`\`\`typescript\n${cleanContent}\n\`\`\``
+        }
+        return `${tab.name}:\n${tab.content}`
+      })
+      .join("\n\n")
   }
 
   // Handle sending message with context
@@ -112,7 +144,9 @@ export default function AIChat({
       setIsGenerating,
       setIsLoading,
       abortControllerRef,
-      activeFileContent
+      activeFileContent,
+      false,
+      templateType
     )
     // Clear context tabs after sending
     setContextTabs([])
@@ -120,9 +154,9 @@ export default function AIChat({
 
   // Set context for the chat
   const setContext = (
-    context: string | null, 
-    name: string, 
-    range?: { start: number, end: number }
+    context: string | null,
+    name: string,
+    range?: { start: number; end: number }
   ) => {
     if (!context) {
       setContextTabs([])
@@ -130,7 +164,7 @@ export default function AIChat({
     }
 
     // Always add a new tab instead of updating existing ones
-    addContextTab('code', name, context, range)
+    addContextTab("code", name, context, range)
   }
 
   return (
@@ -153,10 +187,10 @@ export default function AIChat({
       </div>
       <div
         ref={chatContainerRef}
-        className="flex-grow overflow-y-auto p-4 space-y-4"
+        className="flex-grow overflow-y-auto p-4 space-y-4 relative"
       >
         {messages.map((message, messageIndex) => (
-          // Render chat message component for each message 
+          // Render chat message component for each message
           <ChatMessage
             key={messageIndex}
             message={message}
@@ -166,6 +200,17 @@ export default function AIChat({
           />
         ))}
         {isLoading && <LoadingDots />}
+        
+        {/* Add scroll to bottom button */}
+        {showScrollButton && (
+          <button
+            onClick={() => scrollToBottom(true)}
+            className="fixed bottom-36 right-6 bg-primary text-primary-foreground rounded-md border border-primary p-0.5 shadow-lg hover:bg-primary/90 transition-all"
+            aria-label="Scroll to bottom"
+          >
+            <ChevronDown className="h-5 w-5" />
+          </button>
+        )}
       </div>
       <div className="p-4 border-t mb-14">
         {/* Render context tabs component */}
@@ -180,9 +225,9 @@ export default function AIChat({
           socket={socket}
           onFileSelect={(file: TFile) => {
             socket?.emit("getFile", { fileId: file.id }, (response: string) => {
-              const fileExt = file.name.split('.').pop() || 'txt'
+              const fileExt = file.name.split(".").pop() || "txt"
               const formattedContent = `\`\`\`${fileExt}\n${response}\n\`\`\``
-              addContextTab('file', file.name, formattedContent)
+              addContextTab("file", file.name, formattedContent)
               if (textareaRef.current) {
                 textareaRef.current.focus()
               }
@@ -210,9 +255,9 @@ export default function AIChat({
           }}
           lastCopiedRangeRef={lastCopiedRangeRef}
           activeFileName={activeFileName}
-          contextTabs={contextTabs.map(tab => ({
+          contextTabs={contextTabs.map((tab) => ({
             ...tab,
-            title: tab.id 
+            title: tab.id,
           }))}
           onRemoveTab={removeContextTab}
         />

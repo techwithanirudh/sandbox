@@ -9,12 +9,10 @@ export default function New({
   socket,
   type,
   stopEditing,
-  addNew,
 }: {
   socket: Socket
   type: "file" | "folder"
   stopEditing: () => void
-  addNew: (name: string, type: "file" | "folder") => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -25,19 +23,9 @@ export default function New({
       const valid = validateName(name, "", type)
       if (valid.status) {
         if (type === "file") {
-          socket.emit(
-            "createFile",
-            { name },
-            ({ success }: { success: boolean }) => {
-              if (success) {
-                addNew(name, type)
-              }
-            }
-          )
+          socket.emit("createFile", { name })
         } else {
-          socket.emit("createFolder", { name }, () => {
-            addNew(name, type)
-          })
+          socket.emit("createFolder", { name })
         }
       }
     }

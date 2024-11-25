@@ -1,4 +1,4 @@
-import { Room } from "@/components/editor/live/room"
+// import { Room } from "@/components/editor/live/room"
 import Loading from "@/components/editor/loading"
 import Navbar from "@/components/editor/navbar"
 import { TerminalProvider } from "@/context/TerminalContext"
@@ -51,7 +51,11 @@ const getSharedUsers = async (usersToSandboxes: UsersToSandboxes[]) => {
         }
       )
       const userData: User = await userRes.json()
-      return { id: userData.id, name: userData.name, avatarUrl: userData.avatarUrl }
+      return {
+        id: userData.id,
+        name: userData.name,
+        avatarUrl: userData.avatarUrl,
+      }
     })
   )
 
@@ -89,18 +93,20 @@ export default async function CodePage({ params }: { params: { id: string } }) {
   return (
     <>
       <div className="overflow-hidden overscroll-none w-screen flex flex-col h-screen bg-background">
-        <Room id={sandboxId}>
+        {/* <Room id={sandboxId}> */}
           <TerminalProvider>
             <Navbar
               userData={userData}
               sandboxData={sandboxData}
-              shared={shared}
+              shared={
+                shared as { id: string; name: string; avatarUrl: string }[]
+              }
             />
             <div className="w-screen flex grow">
               <CodeEditor userData={userData} sandboxData={sandboxData} />
             </div>
           </TerminalProvider>
-        </Room>
+        {/* </Room> */}
       </div>
     </>
   )

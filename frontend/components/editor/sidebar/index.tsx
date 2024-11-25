@@ -25,7 +25,6 @@ export default function Sidebar({
   handleDeleteFolder,
   socket,
   setFiles,
-  addNew,
   deletingFolderId,
   toggleAIChat,
   isAIChatOpen,
@@ -43,7 +42,6 @@ export default function Sidebar({
   handleDeleteFolder: (folder: TFolder) => void
   socket: Socket
   setFiles: (files: (TFile | TFolder)[]) => void
-  addNew: (name: string, type: "file" | "folder") => void
   deletingFolderId: string
   toggleAIChat: () => void
   isAIChatOpen: boolean
@@ -93,7 +91,7 @@ export default function Sidebar({
           "moveFile",
           {
             fileId,
-            folderId
+            folderId,
           },
           (response: (TFolder | TFile)[]) => {
             setFiles(response)
@@ -176,7 +174,6 @@ export default function Sidebar({
                   stopEditing={() => {
                     setCreatingNew(null)
                   }}
-                  addNew={addNew}
                 />
               ) : null}
             </>
@@ -203,20 +200,18 @@ export default function Sidebar({
           variant="ghost"
           className={cn(
             "w-full justify-start text-sm font-normal h-8 px-2 mb-2 border-t",
-            isAIChatOpen 
-              ? "bg-muted-foreground/25 text-foreground" 
+            isAIChatOpen
+              ? "bg-muted-foreground/25 text-foreground"
               : "text-muted-foreground"
           )}
           onClick={toggleAIChat}
           aria-disabled={false}
           style={{ opacity: 1 }}
         >
-          <MessageSquareMore 
+          <MessageSquareMore
             className={cn(
               "h-4 w-4 mr-2",
-              isAIChatOpen 
-                ? "text-indigo-500" 
-                : "text-indigo-500 opacity-70"
+              isAIChatOpen ? "text-indigo-500" : "text-indigo-500 opacity-70"
             )}
           />
           AI Chat

@@ -57,7 +57,7 @@ export class SecureGitClient {
 
       // Add files to the repository
       for (const { id, data } of fileData) {
-        await git.add(id)
+        await git.add(id.startsWith("/") ? id.slice(1) : id)
       }
 
       // Commit the changes

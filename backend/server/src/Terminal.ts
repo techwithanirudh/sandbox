@@ -1,8 +1,8 @@
-import { ProcessHandle, Sandbox } from "e2b"
+import { CommandHandle, Sandbox } from "e2b"
 
 // Terminal class to manage a pseudo-terminal (PTY) in a sandbox environment
 export class Terminal {
-  private pty: ProcessHandle | undefined // Holds the PTY process handle
+  private pty: CommandHandle | undefined // Holds the PTY process handle
   private sandbox: Sandbox // Reference to the sandbox environment
 
   // Constructor initializes the Terminal with a sandbox
@@ -24,7 +24,7 @@ export class Terminal {
     this.pty = await this.sandbox.pty.create({
       rows,
       cols,
-      timeout: 0,
+      timeoutMs: 0,
       onData: (data: Uint8Array) => {
         onData(new TextDecoder().decode(data)) // Convert received data to string and pass to handler
       },
