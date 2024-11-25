@@ -26,7 +26,7 @@ export default function ProjectCardDropdown({
           e.preventDefault()
           e.stopPropagation()
         }}
-        className="h-6 w-6 flex items-center justify-center transition-colors bg-transparent hover:bg-muted-foreground/25 rounded-sm outline-foreground"
+        className="h-6 w-6 z-10 flex items-center justify-center transition-colors bg-transparent hover:bg-muted-foreground/25 rounded-sm outline-foreground"
       >
         <Ellipsis className="w-4 h-4" />
       </DropdownMenuTrigger>

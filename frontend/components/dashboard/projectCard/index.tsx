@@ -1,13 +1,26 @@
 "use client"
 
+import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { toggleLike } from "@/lib/actions"
 import { projectTemplates } from "@/lib/data"
 import { Sandbox } from "@/lib/types"
+import { cn } from "@/lib/utils"
+import { useUser } from "@clerk/nextjs"
 import { AnimatePresence, motion } from "framer-motion"
 import { Clock, Eye, Globe, Heart, Lock } from "lucide-react"
 import Image from "next/image"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { memo, useEffect, useMemo, useState } from "react"
+import {
+  memo,
+  MouseEventHandler,
+  useEffect,
+  useMemo,
+  useOptimistic,
+  useState,
+  useTransition,
+} from "react"
 import ProjectCardDropdown from "./dropdown"
 import { CanvasRevealEffect } from "./revealEffect"
 
@@ -18,6 +31,7 @@ type BaseProjectCardProps = {
   visibility: "public" | "private"
   createdAt: Date
   likeCount: number
+  liked?: boolean
   viewCount: number
 }
 
@@ -59,16 +73,19 @@ const formatDate = (date: Date): string => {
 
 const ProjectMetadata = memo(
   ({
+    id,
     visibility,
     createdAt,
     likeCount,
+    liked,
     viewCount,
   }: Pick<
     BaseProjectCardProps,
-    "visibility" | "createdAt" | "likeCount" | "viewCount"
+    "visibility" | "createdAt" | "likeCount" | "liked" | "viewCount" | "id"
   >) => {
+    const { user } = useUser()
     const [date, setDate] = useState<string>()
-
+    const Icon = visibility === "private" ? Lock : Globe
     useEffect(() => {
       setDate(formatDate(new Date(createdAt)))
     }, [createdAt])
@@ -76,23 +93,23 @@ const ProjectMetadata = memo(
     return (
       <div className="flex flex-col text-muted-foreground space-y-2 text-sm z-10">
         <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            {visibility === "private" ? (
-              <>
-                <Lock className="size-4 mr-2" /> Private
-              </>
-            ) : (
-              <>
-                <Globe className="size-4 mr-2" /> Public
-              </>
-            )}
+          <div className="flex items-center gap-2">
+            <Icon className="size-4" />
+            <span className="text-xs">
+              {visibility === "private" ? "Private" : "Public"}
+            </span>
           </div>
         </div>
-        <div className="flex gap-4">
-          <div className="flex items-center">
-            <Clock className="size-4 mr-2" /> {date}
+        <div className="flex gap-3">
+          <div className="flex items-center gap-2">
+            <Clock className="size-4" /> <span className="text-xs">{date}</span>
           </div>
-          <StatItem icon={Heart} value={likeCount} />
+          <LikeButton
+            sandboxId={id}
+            initialIsLiked={!!liked}
+            initialLikeCount={likeCount}
+            userId={user?.id ?? null}
+          />
           <StatItem icon={Eye} value={viewCount} />
         </div>
       </div>
@@ -102,6 +119,63 @@ const ProjectMetadata = memo(
 
 ProjectMetadata.displayName = "ProjectMetadata"
 
+interface LikeButtonProps {
+  sandboxId: string
+  userId: string | null
+  initialLikeCount: number
+  initialIsLiked: boolean
+}
+
+export function LikeButton({
+  sandboxId,
+  userId,
+  initialLikeCount,
+  initialIsLiked,
+}: LikeButtonProps) {
+  // Optimistic state for like status and count
+  const [{ isLiked, likeCount }, optimisticUpdateLike] = useOptimistic(
+    { isLiked: initialIsLiked, likeCount: initialLikeCount },
+    (state, optimisticValue: boolean) => {
+      return {
+        isLiked: optimisticValue,
+        likeCount: state.likeCount + (optimisticValue ? 1 : -1),
+      }
+    }
+  )
+
+  const [isPending, startTransition] = useTransition()
+
+  const handleLike: MouseEventHandler<HTMLButtonElement> = async (e) => {
+    e.stopPropagation() // Prevent click event from bubbling up which leads to navigation to /code/:id
+    if (!userId) return
+
+    startTransition(async () => {
+      const newLikeState = !isLiked
+      try {
+        optimisticUpdateLike(newLikeState)
+        await toggleLike(sandboxId, userId)
+      } catch (error) {
+        console.log("error", error)
+        optimisticUpdateLike(!newLikeState)
+      }
+    })
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={!userId || isPending}
+      onClick={handleLike}
+      className="gap-1 px-1 rounded-full"
+    >
+      <Heart
+        className={cn("size-4", isLiked ? "stroke-red-500 fill-red-500" : "")}
+      />
+      <span className="text-xs">{likeCount}</span>
+    </Button>
+  )
+}
 function ProjectCardComponent({
   id,
   name,
@@ -150,7 +224,11 @@ function ProjectCardComponent({
       className={`
         group/canvas-card p-4 h-48 flex flex-col justify-between items-start 
         hover:border-muted-foreground/50 relative overflow-hidden transition-all
-        ${props.isAuthenticated && props.deletingId === id ? "opacity-50" : ""}
+        ${
+          props.isAuthenticated && props.deletingId === id
+            ? "opacity-50 pointer-events-none cursor-events-none"
+            : "cursor-pointer"
+        }
       `}
     >
       <AnimatePresence>
@@ -178,9 +256,12 @@ function ProjectCardComponent({
           width={20}
           height={20}
         />
-        <div className="font-medium static whitespace-nowrap w-full text-ellipsis overflow-hidden">
+        <Link
+          href={`/code/${id}`}
+          className="font-medium static whitespace-nowrap w-full text-ellipsis overflow-hidden before:content-[''] before:absolute before:z-0 before:top-0 before:left-0 before:w-full before:h-full before:rounded-xl"
+        >
           {name}
-        </div>
+        </Link>
         {props.isAuthenticated && (
           <ProjectCardDropdown
             onVisibilityChange={handleVisibilityChange}
@@ -195,6 +276,8 @@ function ProjectCardComponent({
         createdAt={createdAt}
         likeCount={likeCount}
         viewCount={viewCount}
+        id={id}
+        liked={props.liked}
       />
     </Card>
   )

@@ -2,8 +2,6 @@
 
 import { deleteSandbox, updateSandbox } from "@/lib/actions"
 import { Sandbox } from "@/lib/types"
-import { cn } from "@/lib/utils"
-import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import ProjectCard from "./projectCard"
@@ -71,24 +69,14 @@ export default function DashboardProjects({
                 }
               }
               return (
-                <Link
+                <ProjectCard
                   key={sandbox.id}
-                  href={`/code/${sandbox.id}`}
-                  className={cn(
-                    "transition-all focus-visible:outline-none focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-ring rounded-lg",
-                    deletingId === sandbox.id
-                      ? "pointer-events-none opacity-50 cursor-events-none"
-                      : "cursor-pointer"
-                  )}
-                >
-                  <ProjectCard
-                    onVisibilityChange={onVisibilityChange}
-                    onDelete={onDelete}
-                    deletingId={deletingId}
-                    isAuthenticated
-                    {...sandbox}
-                  />
-                </Link>
+                  onVisibilityChange={onVisibilityChange}
+                  onDelete={onDelete}
+                  deletingId={deletingId}
+                  isAuthenticated
+                  {...sandbox}
+                />
               )
             })}
           </div>

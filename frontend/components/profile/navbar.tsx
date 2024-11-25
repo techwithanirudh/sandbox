@@ -4,6 +4,7 @@ import UserButton from "@/components/ui/userButton"
 import { User } from "@/lib/types"
 import Image from "next/image"
 import Link from "next/link"
+import { Button } from "../ui/button"
 
 export default function ProfileNavbar({ userData }: { userData: User }) {
   return (
@@ -19,7 +20,13 @@ export default function ProfileNavbar({ userData }: { userData: User }) {
       </div>
       <div className="flex items-center space-x-4">
         <ThemeSwitcher />
-        {Boolean(userData?.id) ? <UserButton userData={userData} /> : null}
+        {Boolean(userData?.id) ? (
+          <UserButton userData={userData} />
+        ) : (
+          <Link href="/sign-in">
+            <Button>Login</Button>
+          </Link>
+        )}
       </div>
     </nav>
   )

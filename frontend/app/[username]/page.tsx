@@ -1,7 +1,8 @@
 import ProfilePage from "@/components/profile"
 import ProfileNavbar from "@/components/profile/navbar"
-import { Sandbox, User } from "@/lib/types"
+import { SandboxWithLiked, User } from "@/lib/types"
 import { currentUser } from "@clerk/nextjs"
+import { notFound } from "next/navigation"
 
 export default async function Page({
   params: { username: rawUsername },
@@ -9,11 +10,11 @@ export default async function Page({
   params: { username: string }
 }) {
   const username = decodeURIComponent(rawUsername).replace("@", "")
-  const currentLoggedInUser = await currentUser()
-  console.log(username)
-  const [profileRespnse, dbUserResponse] = await Promise.all([
+  const loggedInClerkUser = await currentUser()
+
+  const [profileOwnerResponse, loggedInUserResponse] = await Promise.all([
     fetch(
-      `${process.env.NEXT_PUBLIC_DATABASE_WORKER_URL}/api/user?username=${username}`,
+      `${process.env.NEXT_PUBLIC_DATABASE_WORKER_URL}/api/user?username=${username}&currentUserId=${loggedInClerkUser?.id}`,
       {
         headers: {
           Authorization: `${process.env.NEXT_PUBLIC_WORKERS_KEY}`,
@@ -21,7 +22,7 @@ export default async function Page({
       }
     ),
     fetch(
-      `${process.env.NEXT_PUBLIC_DATABASE_WORKER_URL}/api/user?id=${currentLoggedInUser?.id}`,
+      `${process.env.NEXT_PUBLIC_DATABASE_WORKER_URL}/api/user?id=${loggedInClerkUser?.id}`,
       {
         headers: {
           Authorization: `${process.env.NEXT_PUBLIC_WORKERS_KEY}`,
@@ -30,30 +31,35 @@ export default async function Page({
     ),
   ])
 
-  const userProfile = (await profileRespnse.json()) as User
-  const dbUserData = (await dbUserResponse.json()) as User
-  const publicSandboxes: Sandbox[] = []
-  const privateSandboxes: Sandbox[] = []
+  const profileOwner = (await profileOwnerResponse.json()) as User
+  const loggedInUser = (await loggedInUserResponse.json()) as User
 
-  userProfile?.sandbox?.forEach((sandbox) => {
+  if (!Boolean(profileOwner?.id)) {
+    notFound()
+  }
+  const publicSandboxes: SandboxWithLiked[] = []
+  const privateSandboxes: SandboxWithLiked[] = []
+
+  profileOwner?.sandbox?.forEach((sandbox) => {
     if (sandbox.visibility === "public") {
-      publicSandboxes.push(sandbox)
+      publicSandboxes.push(sandbox as SandboxWithLiked)
     } else if (sandbox.visibility === "private") {
-      privateSandboxes.push(sandbox)
+      privateSandboxes.push(sandbox as SandboxWithLiked)
     }
   })
-  const hasCurrentUser = Boolean(dbUserData?.id)
+
+  const isUserLoggedIn = Boolean(loggedInUser?.id)
   return (
-    <div className="">
-      <ProfileNavbar userData={dbUserData} />
+    <section>
+      <ProfileNavbar userData={loggedInUser} />
       <ProfilePage
         publicSandboxes={publicSandboxes}
         privateSandboxes={
-          userProfile?.id === dbUserData.id ? privateSandboxes : []
+          profileOwner?.id === loggedInUser.id ? privateSandboxes : []
         }
-        user={userProfile}
-        currentUser={hasCurrentUser ? dbUserData : null}
+        profileOwner={profileOwner}
+        loggedInUser={isUserLoggedIn ? loggedInUser : null}
       />
-    </div>
+    </section>
   )
 }

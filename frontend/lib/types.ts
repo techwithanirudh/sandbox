@@ -23,7 +23,9 @@ export type Sandbox = {
   viewCount: number
   usersToSandboxes: UsersToSandboxes[]
 }
-
+export type SandboxWithLiked = Sandbox & {
+  liked: boolean
+}
 export type UsersToSandboxes = {
   userId: string
   sandboxId: string
