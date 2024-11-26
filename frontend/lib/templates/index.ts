@@ -249,7 +249,7 @@ export interface TemplateConfig {
     php: {
       id: "php",
       name: "PHP",
-      runCommand: "echo http://localhost:80 && npx vite",
+      runCommand: "npx vite",
       fileStructure: {
         "index.php": {
           purpose: "entry",
