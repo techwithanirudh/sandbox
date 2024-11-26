@@ -5,7 +5,13 @@ import { z } from "zod"
 
 import { and, eq, sql } from "drizzle-orm"
 import * as schema from "./schema"
-import { sandbox, user, usersToSandboxes } from "./schema"
+import {
+	Sandbox,
+	sandbox,
+	sandboxLikes,
+	user,
+	usersToSandboxes,
+} from "./schema"
 
 export interface Env {
 	DB: D1Database
@@ -18,6 +24,13 @@ export interface Env {
 
 // npm run generate
 // npx wrangler d1 execute d1-sandbox --local --file=./drizzle/<FILE>
+interface SandboxWithLiked extends Sandbox {
+	liked: boolean
+}
+
+interface UserResponse extends Omit<schema.User, "sandbox"> {
+	sandbox: SandboxWithLiked[]
+}
 
 export default {
 	async fetch(
@@ -238,15 +251,59 @@ export default {
 
 				if (params.has("id")) {
 					const id = params.get("id") as string
+
 					const res = await db.query.user.findFirst({
 						where: (user, { eq }) => eq(user.id, id),
 						with: {
 							sandbox: {
 								orderBy: (sandbox, { desc }) => [desc(sandbox.createdAt)],
+								with: {
+									likes: true,
+								},
 							},
 							usersToSandboxes: true,
 						},
 					})
+					if (res) {
+						const transformedUser: UserResponse = {
+							...res,
+							sandbox: res.sandbox.map(
+								(sb): SandboxWithLiked => ({
+									...sb,
+									liked: sb.likes.some((like) => like.userId === id),
+								})
+							),
+						}
+						return json(transformedUser)
+					}
+					return json(res ?? {})
+				} else if (params.has("username")) {
+					const username = params.get("username") as string
+					const userId = params.get("currentUserId")
+					const res = await db.query.user.findFirst({
+						where: (user, { eq }) => eq(user.username, username),
+						with: {
+							sandbox: {
+								orderBy: (sandbox, { desc }) => [desc(sandbox.createdAt)],
+								with: {
+									likes: true,
+								},
+							},
+							usersToSandboxes: true,
+						},
+					})
+					if (res) {
+						const transformedUser: UserResponse = {
+							...res,
+							sandbox: res.sandbox.map(
+								(sb): SandboxWithLiked => ({
+									...sb,
+									liked: sb.likes.some((like) => like.userId === userId),
+								})
+							),
+						}
+						return json(transformedUser)
+					}
 					return json(res ?? {})
 				} else {
 					const res = await db.select().from(user).all()
@@ -267,8 +324,8 @@ export default {
 				})
 
 				const body = await request.json()
-				const { id, name, email, username, avatarUrl, createdAt, generations, tier, tierExpiresAt, lastResetDate } = userSchema.parse(body)
 
+				const { id, name, email, username, avatarUrl, createdAt, generations, tier, tierExpiresAt, lastResetDate } = userSchema.parse(body)
 				const res = await db
 					.insert(user)
 					.values({
@@ -293,6 +350,57 @@ export default {
 					await db.delete(user).where(eq(user.id, id))
 					return success
 				} else return invalidRequest
+			} else if (method === "PUT") {
+				const updateUserSchema = z.object({
+					id: z.string(),
+					name: z.string().optional(),
+					email: z.string().email().optional(),
+					username: z.string().optional(),
+					avatarUrl: z.string().optional(),
+					generations: z.number().optional(),
+				})
+
+				try {
+					const body = await request.json()
+					const validatedData = updateUserSchema.parse(body)
+
+					const { id, username, ...updateData } = validatedData
+
+					// If username is being updated, check for existing username
+					if (username) {
+						const existingUser = await db
+							.select()
+							.from(user)
+							.where(eq(user.username, username))
+							.get()
+						if (existingUser && existingUser.id !== id) {
+							return json({ error: "Username already exists" }, { status: 409 })
+						}
+					}
+
+					const cleanUpdateData = {
+						...updateData,
+						...(username ? { username } : {}),
+					}
+
+					const res = await db
+						.update(user)
+						.set(cleanUpdateData)
+						.where(eq(user.id, id))
+						.returning()
+						.get()
+
+					if (!res) {
+						return json({ error: "User not found" }, { status: 404 })
+					}
+
+					return json({ res })
+				} catch (error) {
+					if (error instanceof z.ZodError) {
+						return json({ error: error.errors }, { status: 400 })
+					}
+					return json({ error: "Internal server error" }, { status: 500 })
+				}
 			} else {
 				return methodNotAllowed
 			}
@@ -304,7 +412,7 @@ export default {
 				if (!username) return invalidRequest
 
 				const exists = await db.query.user.findFirst({
-					where: (user, { eq }) => eq(user.username, username)
+					where: (user, { eq }) => eq(user.username, username),
 				})
 
 				return json({ exists: !!exists })

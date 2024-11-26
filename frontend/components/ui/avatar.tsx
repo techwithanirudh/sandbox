@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils"
-import Image from "next/image"
 
 export default function Avatar({
   name,
@@ -22,12 +21,12 @@ export default function Avatar({
   return (
     <div
       className={cn(
-        className,
-        "w-9 h-9 font-mono rounded-full overflow-hidden bg-gradient-to-t from-neutral-800 to-neutral-600 flex items-center justify-center text-sm font-medium"
+        "size-9 font-mono rounded-full overflow-hidden bg-gradient-to-t from-neutral-800 to-neutral-600 flex items-center justify-center text-sm font-medium",
+        className
       )}
     >
       {avatarUrl ? (
-        <Image
+        <img
           src={avatarUrl}
           alt={name || "User"}
           width={20}

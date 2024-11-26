@@ -5,5 +5,9 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit"
   },
+  "tailwindCSS.experimental.classRegex": [
+    ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+    ["cx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"]
+  ],
   "editor.defaultFormatter": "esbenp.prettier-vscode"
 }

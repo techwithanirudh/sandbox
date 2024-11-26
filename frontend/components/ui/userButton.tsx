@@ -7,9 +7,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { MAX_FREE_GENERATION } from "@/lib/constant"
 import { User } from "@/lib/types"
 import { useClerk } from "@clerk/nextjs"
-import { Crown, LogOut, Sparkles } from "lucide-react"
+import {
+    Crown,
+  LayoutDashboard,
+  LogOut,
+  Sparkles,
+  User as UserIcon,
+} from "lucide-react"
+import Link from "next/link"
+
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import Avatar from "./avatar"
@@ -90,6 +99,23 @@ export default function UserButton({ userData: initialUserData }: { userData: Us
 
         <DropdownMenuSeparator />
 
+
+        <DropdownMenuItem className="cursor-pointer" asChild>
+          <Link href={"/dashboard"}>
+            <LayoutDashboard className="mr-2 size-4" />
+            <span>Dashboard</span>
+            <DropdownMenuSeparator />
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem className="cursor-pointer" asChild>
+          <Link href={`/@${userData.username}`}>
+            <UserIcon className="mr-2 size-4" />
+            <span>Profile</span>
+            <DropdownMenuSeparator />
+          </Link>
+        </DropdownMenuItem>
+
+
         <div className="py-1.5 px-2 w-full">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
@@ -110,8 +136,9 @@ export default function UserButton({ userData: initialUserData }: { userData: Us
         </div>
 
         <DropdownMenuSeparator />
-
-        <div className="py-1.5 px-2 w-full">
+        <DropdownMenuItem>
+          <Sparkles className="size-4 mr-2 text-indigo-500" />
+                 <div className="w-full">
           <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
             <span>AI Usage</span>
             <span>{userData.generations}/{tierInfo.limit}</span>
@@ -130,18 +157,18 @@ export default function UserButton({ userData: initialUserData }: { userData: Us
             />
           </div>
         </div>
-
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
 
         {/* <DropdownMenuItem className="cursor-pointer">
-          <Pencil className="mr-2 h-4 w-4" />
+          <Pencil className="mr-2 size-4" />
           <span>Edit Profile</span>
         </DropdownMenuItem> */}
         <DropdownMenuItem
           onClick={() => signOut(() => router.push("/"))}
           className="!text-destructive cursor-pointer"
         >
-          <LogOut className="mr-2 h-4 w-4" />
+          <LogOut className="mr-2 size-4" />
           <span>Log Out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

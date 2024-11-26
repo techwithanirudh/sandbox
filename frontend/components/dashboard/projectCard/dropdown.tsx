@@ -11,13 +11,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 export default function ProjectCardDropdown({
-  sandbox,
+  visibility,
   onVisibilityChange,
   onDelete,
 }: {
-  sandbox: Sandbox
-  onVisibilityChange: (sandbox: Sandbox) => void
-  onDelete: (sandbox: Sandbox) => void
+  visibility: Sandbox["visibility"]
+  onVisibilityChange: () => void
+  onDelete: () => void
 }) {
   return (
     <DropdownMenu modal={false}>
@@ -26,7 +26,7 @@ export default function ProjectCardDropdown({
           e.preventDefault()
           e.stopPropagation()
         }}
-        className="h-6 w-6 flex items-center justify-center transition-colors bg-transparent hover:bg-muted-foreground/25 rounded-sm outline-foreground"
+        className="h-6 w-6 z-10 flex items-center justify-center transition-colors bg-transparent hover:bg-muted-foreground/25 rounded-sm outline-foreground"
       >
         <Ellipsis className="w-4 h-4" />
       </DropdownMenuTrigger>
@@ -34,11 +34,11 @@ export default function ProjectCardDropdown({
         <DropdownMenuItem
           onClick={(e) => {
             e.stopPropagation()
-            onVisibilityChange(sandbox)
+            onVisibilityChange()
           }}
           className="cursor-pointer"
         >
-          {sandbox.visibility === "public" ? (
+          {visibility === "public" ? (
             <>
               <Lock className="mr-2 h-4 w-4" />
               <span>Make Private</span>
@@ -53,7 +53,7 @@ export default function ProjectCardDropdown({
         <DropdownMenuItem
           onClick={(e) => {
             e.stopPropagation()
-            onDelete(sandbox)
+            onDelete()
           }}
           className="!text-destructive cursor-pointer"
         >
