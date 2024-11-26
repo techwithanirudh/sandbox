@@ -7,7 +7,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MAX_FREE_GENERATION } from "@/lib/constant"
 import { User } from "@/lib/types"
 import { useClerk } from "@clerk/nextjs"
 import {
@@ -81,7 +80,7 @@ export default function UserButton({ userData: initialUserData }: { userData: Us
   const usagePercentage = Math.floor((userData.generations || 0) * 100 / tierInfo.limit)
 
   const handleUpgrade = async () => {
-    router.push('/upgrade')
+    router.push(`/@${userData.username}`)
   }
 
   return (
@@ -104,16 +103,16 @@ export default function UserButton({ userData: initialUserData }: { userData: Us
           <Link href={"/dashboard"}>
             <LayoutDashboard className="mr-2 size-4" />
             <span>Dashboard</span>
-            <DropdownMenuSeparator />
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem className="cursor-pointer" asChild>
           <Link href={`/@${userData.username}`}>
             <UserIcon className="mr-2 size-4" />
             <span>Profile</span>
-            <DropdownMenuSeparator />
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
 
 
         <div className="py-1.5 px-2 w-full">
@@ -122,7 +121,7 @@ export default function UserButton({ userData: initialUserData }: { userData: Us
               <TierIcon className={`h-4 w-4 ${tierInfo.color}`} />
               <span className="text-sm font-medium">{userData.tier || "FREE"} Plan</span>
             </div>
-            {/* {(userData.tier === "FREE" || userData.tier === "PRO") && (
+            {(userData.tier === "FREE" || userData.tier === "PRO") && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -131,33 +130,32 @@ export default function UserButton({ userData: initialUserData }: { userData: Us
               >
                 Upgrade
               </Button>
-            )} */}
+            )}
           </div>
         </div>
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
-          <Sparkles className="size-4 mr-2 text-indigo-500" />
-                 <div className="w-full">
-          <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
-            <span>AI Usage</span>
-            <span>{userData.generations}/{tierInfo.limit}</span>
-          </div>
+        <div className="px-2 py-1.5">
+          <div className="w-full">
+            <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+              <span>AI Usage</span>
+              <span>{userData.generations}/{tierInfo.limit}</span>
+            </div>
 
-          <div className="rounded-full w-full h-2 overflow-hidden bg-secondary">
-            <div
-              className={`h-full rounded-full transition-all duration-300 ${
+            <div className="rounded-full w-full h-2 overflow-hidden bg-secondary mb-1">  
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
                 usagePercentage > 90 ? 'bg-red-500' : 
                 usagePercentage > 75 ? 'bg-yellow-500' : 
                 tierInfo.color.replace('text-', 'bg-')
               }`}
-              style={{
-                width: `${Math.min(usagePercentage, 100)}%`,
-              }}
-            />
+                style={{
+                  width: `${Math.min(usagePercentage, 100)}%`,
+                }}
+              />
+            </div>
           </div>
         </div>
-        </DropdownMenuItem>
         <DropdownMenuSeparator />
 
         {/* <DropdownMenuItem className="cursor-pointer">

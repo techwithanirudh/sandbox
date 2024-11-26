@@ -17,7 +17,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { deleteSandbox, updateSandbox, updateUser } from "@/lib/actions"
-import { MAX_FREE_GENERATION } from "@/lib/constant"
+import { TIERS } from "@/lib/tiers"
 import { SandboxWithLiked, User } from "@/lib/types"
 import { useUser } from "@clerk/nextjs"
 import {
@@ -74,6 +74,7 @@ export default function ProfilePage({
             joinedDate={profileOwner.createdAt}
             generations={isOwnProfile ? loggedInUser.generations : undefined}
             isOwnProfile={isOwnProfile}
+            tier={profileOwner.tier}
           />
         </div>
         <div className="md:col-span-2">
@@ -100,6 +101,7 @@ function ProfileCard({
   joinedDate,
   generations,
   isOwnProfile,
+  tier,
 }: {
   name: string
   username: string
@@ -108,6 +110,7 @@ function ProfileCard({
   joinedDate: Date
   generations?: number
   isOwnProfile: boolean
+  tier: string
 }) {
   const { user } = useUser()
   const router = useRouter()
@@ -228,7 +231,7 @@ function ProfileCard({
             <div className="flex flex-col items-center gap-2">
               <p className="text-xs text-muted-foreground">{joinedAt}</p>
               {typeof generations === "number" && (
-                <SubscriptionBadge generations={generations} />
+                <SubscriptionBadge generations={generations} tier={tier as keyof typeof TIERS} />
               )}
             </div>
           </>
@@ -442,11 +445,11 @@ const StatsItem = ({ icon: Icon, label }: StatsItemProps) => (
 // #endregion
 
 // #region Sub Badge
-const SubscriptionBadge = ({ generations }: { generations: number }) => {
+const SubscriptionBadge = ({ generations, tier = "FREE" }: { generations: number, tier?: keyof typeof TIERS }) => {
   return (
     <div className="flex gap-2 items-center">
       <Badge variant="secondary" className="text-sm cursor-pointer">
-        Free
+        {tier}
       </Badge>
       <HoverCard>
         <HoverCardTrigger>
@@ -458,11 +461,11 @@ const SubscriptionBadge = ({ generations }: { generations: number }) => {
           <div className="w-full space-y-2">
             <div className="flex justify-between text-sm">
               <span className="font-medium">AI Generations</span>
-              <span>{`${generations} / ${MAX_FREE_GENERATION}`}</span>
+              <span>{`${generations} / ${TIERS[tier].generations}`}</span>
             </div>
             <Progress
               value={generations}
-              max={MAX_FREE_GENERATION}
+              max={TIERS[tier].generations}
               className="w-full"
             />
           </div>
