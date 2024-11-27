@@ -143,21 +143,7 @@ Update `/backend/server/.env`:
 E2B_API_KEY='🔑'
 ```
 
-### 9. Adding AI code generation
-
-In the `/backend/ai` directory:
-
-```
-npx wrangler deploy
-```
-
-Update `/backend/server/.env`:
-
-```
-AI_WORKER_URL='https://ai.🍎.workers.dev'
-```
-
-### 10. Configuring the frontend
+### 9. Configuring the frontend
 
 Update `/frontend/.env`:
 
@@ -165,9 +151,10 @@ Update `/frontend/.env`:
 NEXT_PUBLIC_DATABASE_WORKER_URL='https://database.🍎.workers.dev'
 NEXT_PUBLIC_STORAGE_WORKER_URL='https://storage.🍎.workers.dev'
 NEXT_PUBLIC_WORKERS_KEY='SUPERDUPERSECRET'
+ANTHROPIC_API_KEY='🔑'
 ```
 
-### 11. Running the IDE
+### 10. Running the IDE
 
 Run `npm run dev` simultaneously in:
 
