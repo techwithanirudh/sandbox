@@ -22,6 +22,7 @@ Needed accounts to set up:
 - [Liveblocks](https://liveblocks.io/): Used for collaborative editing.
 - [E2B](https://e2b.dev/): Used for the terminals and live preview.
 - [Cloudflare](https://www.cloudflare.com/): Used for relational data storage (D2) and file storage (R2).
+- [Anthropic](https://anthropic.com/) and [OpenAI](https://openai.com/): API keys for code generation.
 
 A quick overview of the tech before we start: The deployment uses a **NextJS** app for the frontend and an **ExpressJS** server on the backend. Presumably that's because NextJS integrates well with Clerk middleware but not with Socket.io.
 
@@ -152,6 +153,7 @@ NEXT_PUBLIC_DATABASE_WORKER_URL='https://database.🍎.workers.dev'
 NEXT_PUBLIC_STORAGE_WORKER_URL='https://storage.🍎.workers.dev'
 NEXT_PUBLIC_WORKERS_KEY='SUPERDUPERSECRET'
 ANTHROPIC_API_KEY='🔑'
+OPENAI_API_KEY='🔑'
 ```
 
 ### 10. Running the IDE
