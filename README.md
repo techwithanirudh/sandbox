@@ -256,7 +256,6 @@ backend/
 | `backend/server`   | The Express websocket server.                                              |
 | `backend/database` | API for interfacing with the D1 database (SQLite).                         |
 | `backend/storage`  | API for interfacing with R2 storage. Service-bound to `/backend/database`. |
-| `backend/ai`       | API for making requests to Workers AI .                                    |
 
 ### Development
 
