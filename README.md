@@ -2,7 +2,7 @@
 
 ![2024-10-2307 17 42-ezgif com-resize](https://github.com/user-attachments/assets/a4057129-81a7-4a31-a093-c8bc8189ae72)
 
-Sandbox is an open-source cloud-based code editing environment with custom AI code generation, live preview, real-time collaboration and AI chat.
+Sandbox is an open-source cloud-based code editing environment with custom AI code generation, live preview, real-time collaboration, and AI chat.
 
 For the latest updates, join our Discord server: [discord.gitwit.dev](https://discord.gitwit.dev/).
 
@@ -10,11 +10,11 @@ For the latest updates, join our Discord server: [discord.gitwit.dev](https://di
 
 Notes:
 
-- Double check that whatever you change "SUPERDUPERSECRET" to, it's the same in all config files.
+- Double-check that whatever you change "SUPERDUPERSECRET" to, it's the same in all config files.
 
 ### 0. Requirements
 
-The application uses NodeJS for the backend, NextJS for the frontend and Cloudflare workers for additional backend tasks.
+The application uses NodeJS for the backend, NextJS for the frontend, and Cloudflare workers for additional backend tasks.
 
 Needed accounts to set up:
 
@@ -42,7 +42,6 @@ Run `npm install` in:
 /backend/database
 /backend/storage
 /backend/server
-/backend/ai
 ```
 
 ### 2. Adding Clerk
@@ -248,8 +247,7 @@ backend/
 ├── database/
 │   ├── src
 │   └── drizzle
-├── storage
-└── ai
+└── storage
 ```
 
 | Path               | Description                                                                |
