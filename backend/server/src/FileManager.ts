@@ -92,7 +92,11 @@ export class FileManager {
 
   // Convert local file path to remote path
   private getRemoteFileId(localId: string): string {
-    return `projects/${this.sandboxId}${localId}`
+    return [
+      "projects",
+      this.sandboxId,
+      localId.startsWith("/") ? localId : localId,
+    ].join("/")
   }
 
   // Convert remote file path to local file path
