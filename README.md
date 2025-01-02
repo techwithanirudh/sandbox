@@ -191,6 +191,10 @@ DOKKU_USERNAME=
 DOKKU_KEY=
 ```
 
+## Deploying to AWS
+
+The backend server and deployments server can be deployed using AWS's EC2 service. See [our video guide](https://www.youtube.com/watch?v=WN8HQnimjmk) on how to do this.
+
 ## Creating Custom Templates
 
 Anyone can contribute a custom template for integration in Sandbox. Since Sandbox is built on E2B, there is no limitation to what langauge or runtime a Sandbox can use.
