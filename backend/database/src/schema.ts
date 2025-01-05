@@ -12,6 +12,7 @@ export const user = sqliteTable("user", {
   email: text("email").notNull(),
   username: text("username").notNull().unique(),
   avatarUrl: text("avatarUrl"),
+  githubToken: text("githubToken"),
   createdAt: integer("createdAt", { mode: "timestamp_ms" }).default(
     sql`CURRENT_TIMESTAMP`
   ),

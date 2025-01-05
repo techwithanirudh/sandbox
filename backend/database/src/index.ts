@@ -5,13 +5,7 @@ import { z } from "zod"
 
 import { and, eq, sql } from "drizzle-orm"
 import * as schema from "./schema"
-import {
-  Sandbox,
-  sandbox,
-  sandboxLikes,
-  user,
-  usersToSandboxes,
-} from "./schema"
+import { Sandbox, sandbox, user, usersToSandboxes } from "./schema"
 
 export interface Env {
   DB: D1Database
@@ -316,6 +310,7 @@ export default {
           email: z.string().email(),
           username: z.string(),
           avatarUrl: z.string().optional(),
+          githubToken: z.string().nullable().optional(),
           createdAt: z.string().optional(),
           generations: z.number().optional(),
           tier: z.enum(["FREE", "PRO", "ENTERPRISE"]).optional(),
@@ -331,6 +326,7 @@ export default {
           email,
           username,
           avatarUrl,
+          githubToken,
           createdAt,
           generations,
           tier,
@@ -345,6 +341,7 @@ export default {
             email,
             username,
             avatarUrl,
+            githubToken,
             createdAt: createdAt ? new Date(createdAt) : new Date(),
             generations,
             tier,
@@ -368,6 +365,7 @@ export default {
           email: z.string().email().optional(),
           username: z.string().optional(),
           avatarUrl: z.string().optional(),
+          githubToken: z.string().nullable().optional(),
           generations: z.number().optional(),
         })
 
