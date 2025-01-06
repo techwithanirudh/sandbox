@@ -97,7 +97,7 @@ export async function unshareSandbox(sandboxId: string, userId: string) {
 }
 
 export async function toggleLike(sandboxId: string, userId: string) {
-  await fetch(
+  const res = await fetch(
     `${process.env.NEXT_PUBLIC_DATABASE_WORKER_URL}/api/sandbox/like`,
     {
       method: "POST",
