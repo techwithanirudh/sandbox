@@ -5,7 +5,7 @@ import { z } from "zod"
 
 import { and, eq, sql } from "drizzle-orm"
 import * as schema from "./schema"
-import { Sandbox, sandbox, user, usersToSandboxes } from "./schema"
+import { Sandbox, sandbox, sandboxLikes, user, usersToSandboxes } from "./schema"
 
 export interface Env {
   DB: D1Database

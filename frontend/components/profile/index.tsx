@@ -135,7 +135,7 @@ function ProfileCard({
   isOwnProfile,
   bio,
   personalWebsite,
-  socialLinks,
+  socialLinks = [],
   tier,
 }: {
   name: string
@@ -178,7 +178,7 @@ function ProfileCard({
   }, [sandboxes])
 
   const showAddMoreInfoBanner = useMemo(() => {
-    return !bio && !personalWebsite && socialLinks.length === 0
+    return !bio && !personalWebsite && (socialLinks?.length ?? 0) === 0
   }, [personalWebsite, bio, socialLinks])
 
   return (
