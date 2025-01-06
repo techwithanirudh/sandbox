@@ -67,6 +67,7 @@ export default {
         const params = url.searchParams
         if (params.has("id")) {
           const id = params.get("id") as string
+          await db.delete(sandboxLikes).where(eq(sandboxLikes.sandboxId, id))
           await db
             .delete(usersToSandboxes)
             .where(eq(usersToSandboxes.sandboxId, id))
@@ -239,6 +240,88 @@ export default {
 
         return success
       } else return methodNotAllowed
+    } else if (path === "/api/sandbox/like") {
+      if (method === "POST") {
+        const likeSchema = z.object({
+          sandboxId: z.string(),
+          userId: z.string(),
+        })
+
+        try {
+          const body = await request.json()
+          const { sandboxId, userId } = likeSchema.parse(body)
+
+          // Check if user has already liked
+          const existingLike = await db.query.sandboxLikes.findFirst({
+            where: (likes, { and, eq }) =>
+              and(eq(likes.sandboxId, sandboxId), eq(likes.userId, userId)),
+          })
+
+          if (existingLike) {
+            // Unlike
+            await db
+              .delete(sandboxLikes)
+              .where(
+                and(
+                  eq(sandboxLikes.sandboxId, sandboxId),
+                  eq(sandboxLikes.userId, userId)
+                )
+              )
+
+            await db
+              .update(sandbox)
+              .set({
+                likeCount: sql`${sandbox.likeCount} - 1`,
+              })
+              .where(eq(sandbox.id, sandboxId))
+
+            return json({
+              message: "Unlike successful",
+              liked: false,
+            })
+          } else {
+            // Like
+            await db.insert(sandboxLikes).values({
+              sandboxId,
+              userId,
+              createdAt: new Date(),
+            })
+
+            await db
+              .update(sandbox)
+              .set({
+                likeCount: sql`${sandbox.likeCount} + 1`,
+              })
+              .where(eq(sandbox.id, sandboxId))
+
+            return json({
+              message: "Like successful",
+              liked: true,
+            })
+          }
+        } catch (error) {
+          return new Response("Invalid request format", { status: 400 })
+        }
+      } else if (method === "GET") {
+        const params = url.searchParams
+        const sandboxId = params.get("sandboxId")
+        const userId = params.get("userId")
+
+        if (!sandboxId || !userId) {
+          return invalidRequest
+        }
+
+        const like = await db.query.sandboxLikes.findFirst({
+          where: (likes, { and, eq }) =>
+            and(eq(likes.sandboxId, sandboxId), eq(likes.userId, userId)),
+        })
+
+        return json({
+          liked: !!like,
+        })
+      } else {
+        return methodNotAllowed
+      }
     } else if (path === "/api/user") {
       if (method === "GET") {
         const params = url.searchParams
@@ -362,6 +445,16 @@ export default {
         const updateUserSchema = z.object({
           id: z.string(),
           name: z.string().optional(),
+          bio: z.string().optional(),
+          personalWebsite: z.string().optional(),
+          links: z
+            .array(
+              z.object({
+                url: z.string(),
+                platform: z.enum(schema.KNOWN_PLATFORMS),
+              })
+            )
+            .optional(),
           email: z.string().email().optional(),
           username: z.string().optional(),
           avatarUrl: z.string().optional(),
