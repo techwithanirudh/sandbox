@@ -5,13 +5,7 @@ import { z } from "zod"
 
 import { and, eq, sql } from "drizzle-orm"
 import * as schema from "./schema"
-import {
-  Sandbox,
-  sandbox,
-  sandboxLikes,
-  user,
-  usersToSandboxes,
-} from "./schema"
+import { Sandbox, sandbox, user, usersToSandboxes } from "./schema"
 
 export interface Env {
   DB: D1Database
@@ -365,6 +359,16 @@ export default {
         const updateUserSchema = z.object({
           id: z.string(),
           name: z.string().optional(),
+          bio: z.string().optional(),
+          personalWebsite: z.string().optional(),
+          links: z
+            .array(
+              z.object({
+                url: z.string(),
+                platform: z.enum(schema.KNOWN_PLATFORMS),
+              })
+            )
+            .optional(),
           email: z.string().email().optional(),
           username: z.string().optional(),
           avatarUrl: z.string().optional(),
