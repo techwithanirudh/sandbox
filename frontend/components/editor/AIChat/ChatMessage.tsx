@@ -126,8 +126,8 @@ export default function ChatMessage({
       <div
         className={`relative p-2 rounded-lg ${
           message.role === "user"
-            ? "bg-[#262626] text-foreground"
-            : "bg-transparent text-foreground"
+            ? "bg-foreground text-background"
+            : "bg-background text-foreground"
         } max-w-full`}
       >
         {/* Render context tabs */}
