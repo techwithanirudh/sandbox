@@ -62,7 +62,7 @@ export default function CodeEditor({
   //SocketContext functions and effects
   const { socket, setUserAndSandboxId } = useSocket()
   // theme
-  const { theme } = useTheme()
+  const { resolvedTheme: theme } = useTheme()
   useEffect(() => {
     // Ensure userData.id and sandboxData.id are available before attempting to connect
     if (userData.id && sandboxData.id) {
