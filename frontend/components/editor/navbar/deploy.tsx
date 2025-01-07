@@ -75,7 +75,7 @@ export default function DeployButtonModal({
           </div>
           <Button
             variant="outline"
-            className="mt-4 w-full bg-[#0a0a0a] text-white hover:bg-[#262626]"
+            className="mt-4 w-full bg-[#0a0a0a] text-foreground hover:bg-[#262626]"
             onClick={handleDeploy}
           >
             {isDeploying ? "Deploying..." : isDeployed ? "Update" : "Deploy"}
