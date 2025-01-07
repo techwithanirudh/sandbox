@@ -96,15 +96,6 @@ export default function Dashboard({
             </Button> */}
           </div>
           <div className="flex flex-col">
-            <a target="_blank" href="https://github.com/jamesmurdza/sandbox">
-              <Button
-                variant="ghost"
-                className="justify-start w-full font-normal text-muted-foreground"
-              >
-                <Code2 className="w-4 h-4 mr-2" />
-                GitHub Repository
-              </Button>
-            </a>
             <Button
               onClick={() => setAboutModalOpen(true)}
               variant="ghost"

@@ -31,7 +31,7 @@ A quick overview of the tech before we start: The deployment uses a **NextJS** a
 No surprise in the first step:
 
 ```bash
-git clone https://github.com/jamesmurdza/sandbox
+git clone https://github.com/techwithanirudh/sandbox
 cd sandbox
 ```
 

@@ -165,14 +165,6 @@ export default function NewProjectModal({
               {emptyTemplates && (
                 <div className="flex flex-col gap-2 items-center text-center justify-center text-muted-foreground text-sm">
                   <p>No templates found</p>
-                  <Button size="xs" asChild>
-                    <a
-                      href="https://github.com/jamesmurdza/sandbox"
-                      target="_blank"
-                    >
-                      Contribute
-                    </a>
-                  </Button>
                 </div>
               )}
             </div>

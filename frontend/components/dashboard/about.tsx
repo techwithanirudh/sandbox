@@ -31,7 +31,7 @@ export default function AboutModal({
           <div className="space-y-2">
             <div className="text-sm">
               <a 
-                href="https://discord.gitwit.dev/" 
+                href="https://discord.sandbox.techwithanirudh.com/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"
@@ -41,12 +41,22 @@ export default function AboutModal({
             </div>
             <div className="text-sm">
               <a 
-                href="https://github.com/jamesmurdza/sandbox/issues" 
+                href="https://github.com/techwithanirudh/sandbox/issues" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"
               >
                 Report issues on GitHub →
+              </a>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Powered by <a 
+                href="https://github.com/jamesmurdza/sandbox" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                jamesmurdza/sandbox →
               </a>
             </div>
           </div>
