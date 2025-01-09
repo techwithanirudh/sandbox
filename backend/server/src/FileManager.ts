@@ -12,7 +12,7 @@ import { generateFileStructure } from "./utils-filetree"
  * Make sure your Docker image has inotify-tools installed, e.g.:
  *   RUN apt-get update && apt-get install -y inotify-tools
  */
-const PROJECT_DIR = "/home/user/project"
+const PROJECT_DIR = "~/sandbox/backend/server"
 
 export class FileManager {
   private sandboxId: string
