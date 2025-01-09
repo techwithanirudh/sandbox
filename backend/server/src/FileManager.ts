@@ -149,8 +149,8 @@ export class FileManager {
 
     await new Promise<void>((resolve, reject) => {
       this.container.modem.demuxStream(stream, 
-        { write: (chunk) => { stdout += chunk.toString(); } },
-        { write: (chunk) => { stderr += chunk.toString(); } }
+        { write: (chunk: any) => { stdout += chunk.toString(); } },
+        { write: (chunk: any) => { stderr += chunk.toString(); } }
       )
       stream.on("end", resolve)
       stream.on("error", reject)
