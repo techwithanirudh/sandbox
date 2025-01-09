@@ -1,3 +1,4 @@
+// /backend/server/src/SecureGitClient.ts
 import fs from "fs"
 import os from "os"
 import path from "path"
@@ -19,65 +20,41 @@ export class SecureGitClient {
 
   async pushFiles(fileData: FileData[], repository: string): Promise<void> {
     let tempDir: string | undefined
-
     try {
-      // Create a temporary directory
-      tempDir = fs.mkdtempSync(path.posix.join(os.tmpdir(), "git-push-"))
-      console.log(`Temporary directory created: ${tempDir}`)
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-push-'))
+      console.log(`Temp dir: ${tempDir}`)
 
-      // Write files to the temporary directory
-      console.log(`Writing ${fileData.length} files.`)
       for (const { id, data } of fileData) {
-        const filePath = path.posix.join(tempDir, id)
-        const dirPath = path.dirname(filePath)
-
-        if (!fs.existsSync(dirPath)) {
-          fs.mkdirSync(dirPath, { recursive: true })
-        }
+        const filePath = path.join(tempDir, id)
+        fs.mkdirSync(path.dirname(filePath), { recursive: true })
         fs.writeFileSync(filePath, data)
       }
 
-      // Initialize the simple-git instance with the temporary directory and custom SSH command
       const git: SimpleGit = simpleGit(tempDir, {
         config: [
-          "core.sshCommand=ssh -i " +
-            this.sshKeyPath +
-            " -o IdentitiesOnly=yes",
-        ],
+          `core.sshCommand=ssh -i ${this.sshKeyPath} -o IdentitiesOnly=yes`
+        ]
       }).outputHandler((_command, stdout, stderr) => {
         stdout.pipe(process.stdout)
         stderr.pipe(process.stderr)
       })
 
-      // Initialize a new Git repository
       await git.init()
+      await git.addRemote('origin', `${this.gitUrl}:${repository}`)
 
-      // Add remote repository
-      await git.addRemote("origin", `${this.gitUrl}:${repository}`)
-
-      // Add files to the repository
-      for (const { id, data } of fileData) {
-        await git.add(id.startsWith("/") ? id.slice(1) : id)
+      for (const f of fileData) {
+        const p = f.id.startsWith('/') ? f.id.slice(1) : f.id
+        await git.add(p)
       }
 
-      // Commit the changes
-      await git.commit("Add files.")
+      await git.commit('Add files via SecureGitClient')
+      await git.push('origin', 'master', { '--force': null })
+      console.log('Pushed files to the repository')
 
-      // Push the changes to the remote repository
-      await git.push("origin", "master", { "--force": null })
-
-      console.log("Files successfully pushed to the repository")
-
-      if (tempDir) {
-        fs.rmSync(tempDir, { recursive: true, force: true })
-        console.log(`Temporary directory removed: ${tempDir}`)
-      }
+      fs.rmSync(tempDir, { recursive: true, force: true })
     } catch (error) {
-      if (tempDir) {
-        fs.rmSync(tempDir, { recursive: true, force: true })
-        console.log(`Temporary directory removed: ${tempDir}`)
-      }
-      console.error("Error pushing files to the repository:", error)
+      if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true })
+      console.error('[SecureGitClient] Error pushing files:', error)
       throw error
     }
   }

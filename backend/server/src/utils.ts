@@ -1,23 +1,18 @@
-export class LockManager {
-  private locks: { [key: string]: Promise<any> }
+// /backend/server/src/utils.ts
 
-  constructor() {
-    this.locks = {}
-  }
+export class LockManager {
+  private locks: { [key: string]: Promise<any> } = {}
 
   async acquireLock<T>(key: string, task: () => Promise<T>): Promise<T> {
     if (!this.locks[key]) {
-      this.locks[key] = new Promise<T>(async (resolve, reject) => {
+      this.locks[key] = (async () => {
         try {
-          const result = await task()
-          resolve(result)
-        } catch (error) {
-          reject(error)
+          return await task()
         } finally {
           delete this.locks[key]
         }
-      })
+      })()
     }
-    return await this.locks[key]
+    return this.locks[key]
   }
 }

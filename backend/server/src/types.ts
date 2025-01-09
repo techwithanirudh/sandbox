@@ -1,5 +1,4 @@
-// DB Types
-
+// /backend/server/src/types.ts
 export type User = {
   id: string
   name: string
@@ -12,8 +11,8 @@ export type User = {
 export type Sandbox = {
   id: string
   name: string
-  type: "reactjs" | "vanillajs" | "nextjs" | "streamlit"
-  visibility: "public" | "private"
+  type: 'reactjs' | 'vanillajs' | 'nextjs' | 'streamlit'
+  visibility: 'public' | 'private'
   createdAt: Date
   userId: string
   usersToSandboxes: UsersToSandboxes[]
@@ -27,14 +26,14 @@ export type UsersToSandboxes = {
 
 export type TFolder = {
   id: string
-  type: "folder"
+  type: 'folder'
   name: string
   children: (TFile | TFolder)[]
 }
 
 export type TFile = {
   id: string
-  type: "file"
+  type: 'file'
   name: string
 }
 
@@ -68,6 +67,7 @@ export type R2FileBody = R2FileData & {
   json: Promise<any>
   blob: Promise<Blob>
 }
+
 export interface DokkuResponse {
   success: boolean
   apps?: string[]

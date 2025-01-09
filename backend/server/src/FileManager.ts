@@ -1,30 +1,24 @@
 // /backend/server/src/FileManager.ts
-import Docker, { Container } from "dockerode"
-import JSZip from "jszip"
-import path from "path"
-import { spawn } from "child_process"
-import RemoteFileStorage from "./RemoteFileStorage"
-import { MAX_BODY_SIZE } from "./ratelimit"
-import { TFile, TFileData, TFolder } from "./types"
-import { generateFileStructure } from "./utils-filetree"
+import path from 'path'
+import { Container } from 'dockerode'
 import tar from 'tar-stream'
-import stream from 'stream'
+import { TFile, TFileData, TFolder } from './types'
+import RemoteFileStorage from './RemoteFileStorage'
+import { MAX_BODY_SIZE } from './ratelimit'
+import { generateFileStructure } from './utils-filetree'
 
 /**
  * We'll store all project files in /workspace/data inside the container.
- * Make sure your Dockerfile or container environment has that folder.
  */
-const PROJECT_DIR = "/workspace/data"
+const PROJECT_DIR = '/workspace/data'
 
 export class FileManager {
   private sandboxId: string
   private container: Container
-  public files: (TFolder | TFile)[]
-  public fileData: TFileData[]
   private refreshFileList: ((files: (TFolder | TFile)[]) => void) | null
 
-  // We'll store the child process for watchers
-  private watcherProcess: any
+  public files: (TFolder | TFile)[]
+  public fileData: TFileData[]
 
   constructor(
     sandboxId: string,
@@ -33,476 +27,321 @@ export class FileManager {
   ) {
     this.sandboxId = sandboxId
     this.container = container
+    this.refreshFileList = refreshFileList
+
     this.files = []
     this.fileData = []
-    this.refreshFileList = refreshFileList
   }
 
+  /**
+   * Initialize FileManager: 
+   * - Sync remote -> container
+   * - Load container's file structure -> memory
+   */
   async initialize() {
-    console.log(`Initializing FileManager for sandbox ${this.sandboxId}`)
+    console.log(`[FileManager] Initializing for sandbox ${this.sandboxId}`)
     try {
-      // Download remote structure, sync to container, etc.
+      // 1) Pull file paths from remote, generate structure
       await this.updateFileStructure()
-      console.log(`File structure updated for sandbox ${this.sandboxId}`)
+
+      // 2) Pull actual file data from remote
       await this.updateFileData()
-      console.log(`File data updated for sandbox ${this.sandboxId}`)
 
-      // Copy files into container using Docker's putArchive
-      for (const f of this.fileData) {
-        const containerPath = path.posix.join(PROJECT_DIR, f.id)
-        console.log(`Writing file ${f.id} to ${containerPath}`)
-        await this.writeToContainer(containerPath, f.data)
-      }
+      // 3) Copy that data into the container
+      await this.syncFilesIntoContainer()
 
-      // Then load local container files
+      // 4) Now load the local file structure from container
       await this.loadLocalFiles()
-      console.log(`Local files loaded for sandbox ${this.sandboxId}`)
-
-      // Start watchers with inotifywait
-      await this.startWatcher(PROJECT_DIR)
-      console.log(`Watcher started for ${PROJECT_DIR}`)
+      console.log(`[FileManager] Done initializing for sandbox ${this.sandboxId}`)
     } catch (error) {
-      console.error(`Error during FileManager initialization for sandbox ${this.sandboxId}:`, error)
+      console.error(`[FileManager] Error initializing:`, error)
       throw error
     }
   }
 
+  // ----------------------------------------------------------------
+  //  Remote -> Local
+  // ----------------------------------------------------------------
+
+  private async updateFileStructure() {
+    // fetch all remote object keys for this sandbox
+    const remotePaths = await RemoteFileStorage.getSandboxPaths(this.sandboxId)
+    // strip "projects/<sandboxId>/" so we get relative paths
+    const localPaths = remotePaths.map(r => r.replace(`projects/${this.sandboxId}/`, ''))
+    this.files = generateFileStructure(localPaths)
+    return this.files
+  }
+
+  private async updateFileData() {
+    // same approach: get all remotePaths, fetch content
+    const remotePaths = await RemoteFileStorage.getSandboxPaths(this.sandboxId)
+    const localPaths = remotePaths.map(r => r.replace(`projects/${this.sandboxId}/`, ''))
+
+    const results: TFileData[] = []
+    for (const p of localPaths) {
+      if (!p || p.endsWith('/')) continue
+      const content = await RemoteFileStorage.fetchFileContent(`projects/${this.sandboxId}/${p}`)
+      results.push({ id: p, data: content })
+    }
+    this.fileData = results
+    return this.fileData
+  }
+
+  /**
+   * Copy fileData into container.
+   */
+  private async syncFilesIntoContainer() {
+    for (const file of this.fileData) {
+      const containerPath = path.posix.join(PROJECT_DIR, file.id)
+      await this.writeToContainer(containerPath, file.data)
+    }
+  }
+
+  /**
+   * Load local files from container, update this.files
+   */
   private async loadLocalFiles() {
-    console.log(`Loading local files for sandbox ${this.sandboxId}`)
-    // List all files from the container
-    const { stdout, stderr } = await this.containerExec(`find "${PROJECT_DIR}" -type f`)
+    const { stdout, stderr } = await this.execInContainer(`find "${PROJECT_DIR}" -type f`)
     if (stderr) {
-      console.error(`Error finding files in container: ${stderr}`)
+      console.error('[FileManager] Error listing files in container:', stderr)
       return
     }
 
     const localPaths = stdout
-      .split("\n")
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0)
-      .map((f) => path.posix.relative(PROJECT_DIR, f))
+      .split('\n')
+      .map(p => p.trim())
+      .filter(Boolean)
+      .map(fp => path.posix.relative(PROJECT_DIR, fp))
 
-    console.log(`Found ${localPaths.length} files in container`)
     this.files = generateFileStructure(localPaths)
-    console.log(`Generated file structure:`, JSON.stringify(this.files, null, 2))
   }
 
-  // Launch `inotifywait` in the container
-  private async startWatcher(dir: string) {
-    console.log(`Starting inotifywait watcher for directory: ${dir}`)
-    // We'll do `docker exec` via the local shell. Ensure your Node server has docker CLI installed
-    const containerInfo = await this.container.inspect()
-    const containerId = containerInfo.Id
-
-    this.watcherProcess = spawn("docker", [
-      "exec",
-      "-i",
-      containerId,
-      "inotifywait",
-      "-m",
-      "-r",
-      "--format",
-      "%e|%w|%f",
-      dir,
-    ])
-
-    this.watcherProcess.stdout.on("data", (data: Buffer) => {
-      const lines = data.toString("utf-8").split("\n").filter(Boolean)
-      lines.forEach((line) => {
-        console.log(`Watcher event: ${line}`)
-        this.handleInotifyEvent(line)
-      })
-    })
-
-    this.watcherProcess.stderr.on("data", (err: Buffer) => {
-      console.error("inotifywait error:", err.toString())
-    })
-
-    this.watcherProcess.on("exit", (code: any) => {
-      console.log("inotifywait exited with code:", code)
-    })
-  }
-
-  private async handleInotifyEvent(line: string) {
-    // Example line: "CREATE|/workspace/data/subfolder/|newfile.txt"
-    const [rawEvent, watchDir, filename] = line.split("|")
-    const eventTypes = rawEvent.split(",")
-
-    console.log("inotify event:", rawEvent, "dir:", watchDir, "file:", filename)
-
-    const relativeDir = path.posix.relative(PROJECT_DIR, watchDir)
-    const relativePath = path.posix.join(relativeDir, filename)
-    const fullPath = path.posix.join(PROJECT_DIR, relativePath)
-
-    try {
-      if (eventTypes.includes("CREATE") || eventTypes.includes("MODIFY")) {
-        // Handle file creation or modification
-        const { stdout, stderr } = await this.containerExec(`cat "${fullPath}"`)
-        if (stderr) {
-          console.error(`Error reading file ${relativePath}: ${stderr}`)
-          return
-        }
-
-        const fileContent = stdout
-        console.log(`Uploading file ${relativePath} to R2`)
-
-        await RemoteFileStorage.saveFile(`projects/${this.sandboxId}/${relativePath}`, fileContent)
-        console.log(`File ${relativePath} uploaded to R2 successfully`)
-      }
-
-      if (eventTypes.includes("DELETE")) {
-        // Handle file deletion
-        console.log(`Deleting file ${relativePath} from R2`)
-        await RemoteFileStorage.deleteFile(`projects/${this.sandboxId}/${relativePath}`)
-        console.log(`File ${relativePath} deleted from R2 successfully`)
-      }
-
-      if (eventTypes.includes("CREATE,ISDIR") || eventTypes.includes("DELETE,ISDIR")) {
-        // Handle directory creation or deletion
-        const action = eventTypes.includes("CREATE") ? "Creating" : "Deleting"
-        console.log(`${action} directory ${relativePath} in R2`)
-
-        if (eventTypes.includes("CREATE")) {
-          // Optionally, create a .keep file to represent the directory in R2
-          await RemoteFileStorage.createFile(`projects/${this.sandboxId}/${relativePath}/.keep`)
-          console.log(`Directory ${relativePath} created in R2 with .keep file`)
-        } else {
-          await RemoteFileStorage.deleteFile(`projects/${this.sandboxId}/${relativePath}/.keep`)
-          console.log(`Directory ${relativePath} deleted from R2`)
-        }
-      }
-
-      // Refresh file structure and notify clients
-      await this.updateFileStructure()
-      this.refreshFileList?.(this.files)
-    } catch (error) {
-      console.error(`Error handling inotify event for ${relativePath}:`, error)
-    }
-  }
-
-  // Exec a command inside the container
-  private async containerExec(cmd: string): Promise<{ stdout: string; stderr: string }> {
+  /**
+   * Helper: run a command in the container and get stdout/stderr
+   */
+  private async execInContainer(cmd: string): Promise<{ stdout: string; stderr: string }> {
     const exec = await this.container.exec({
-      Cmd: ["bash", "-c", cmd],
+      Cmd: ['bash', '-c', cmd],
       AttachStdout: true,
       AttachStderr: true,
     })
     const stream = await exec.start({})
-
-    let stdout = ""
-    let stderr = ""
+    let stdout = ''
+    let stderr = ''
 
     await new Promise<void>((resolve, reject) => {
-      this.container.modem.demuxStream(stream, 
-        { write: (chunk: Buffer) => { stdout += chunk.toString(); } },
-        { write: (chunk: Buffer) => { stderr += chunk.toString(); } }
+      this.container.modem.demuxStream(
+        stream,
+        {
+          write: (chunk: Buffer) => {
+            stdout += chunk.toString()
+          },
+        },
+        {
+          write: (chunk: Buffer) => {
+            stderr += chunk.toString()
+          },
+        },
       )
-      stream.on("end", resolve)
-      stream.on("error", reject)
+      stream.on('end', resolve)
+      stream.on('error', reject)
     })
-
-    if (stderr) {
-      console.error(`Error executing command "${cmd}":`, stderr)
-      // Optionally, throw an error to stop the process
-      // throw new Error(stderr)
-    }
-
-    console.log(`Executed command "${cmd}", stdout: ${stdout}`)
     return { stdout, stderr }
   }
 
-  // Use Docker's putArchive to write files to the container
+  /**
+   * Helper: Write a single file to container via tar-stream
+   */
   private async writeToContainer(containerPath: string, data: string) {
     try {
-      console.log(`Writing data to container path: ${containerPath}`)
       const pack = tar.pack()
-      const relativePath = path.posix.relative('/', containerPath)
+      // strip leading slash if needed
+      const relPath = containerPath.startsWith('/')
+        ? containerPath.slice(1)
+        : containerPath
 
-      pack.entry({ name: relativePath }, data)
+      pack.entry({ name: relPath }, data)
       pack.finalize()
 
       await this.container.putArchive(pack, { path: '/' })
-      console.log(`Successfully wrote to container at ${containerPath}`)
     } catch (error) {
-      console.error(`Error writing to container at ${containerPath}:`, error)
+      console.error(`[FileManager] Error writing file to container at ${containerPath}:`, error)
       throw error
     }
   }
 
-  // Download from remote => local
-  private async updateFileData() {
-    console.log(`Fetching sandbox paths for sandbox ${this.sandboxId}`)
-    const remotePaths = await RemoteFileStorage.getSandboxPaths(this.sandboxId)
-    console.log("Remote paths fetched:", remotePaths)
+  // ----------------------------------------------------------------
+  //  Public API Methods
+  // ----------------------------------------------------------------
 
-    const localPaths = remotePaths.map((r) =>
-      r.replace(`projects/${this.sandboxId}/`, "")
-    )
-    console.log("Local paths derived:", localPaths)
-
-    this.fileData = await this.generateFileData(localPaths)
-    console.log("File data generated:", this.fileData)
-    return this.fileData
-  }
-
-  private async updateFileStructure() {
-    console.log(`Fetching sandbox paths for file structure of sandbox ${this.sandboxId}`)
-    const remotePaths = await RemoteFileStorage.getSandboxPaths(this.sandboxId)
-    console.log("Remote paths fetched for structure:", remotePaths)
-
-    const localPaths = remotePaths.map((r) =>
-      r.replace(`projects/${this.sandboxId}/`, "")
-    )
-    console.log("Local paths derived for structure:", localPaths)
-
-    this.files = generateFileStructure(localPaths)
-    console.log("Generated file structure:", JSON.stringify(this.files, null, 2))
-    return this.files
-  }
-
-  private async generateFileData(paths: string[]): Promise<TFileData[]> {
-    const results: TFileData[] = []
-    for (const p of paths) {
-      if (!p || p.endsWith("/")) continue
-      console.log(`Fetching content for file: projects/${this.sandboxId}/${p}`)
-      const content = await RemoteFileStorage.fetchFileContent(
-        `projects/${this.sandboxId}/${p}`
-      )
-      if (content) {
-        results.push({ id: p, data: content })
-        console.log(`Fetched content for ${p}: ${content.substring(0, 100)}...`)
-      } else {
-        console.warn(`No content fetched for ${p}`)
-      }
-    }
-    return results
-  }
-
-  // ---------- FileManager Methods ----------
-
-  async getFile(fileId: string): Promise<string | undefined> {
+  /**
+   * Return contents of a file from container
+   */
+  public async getFile(fileId: string): Promise<string | undefined> {
     const containerPath = path.posix.join(PROJECT_DIR, fileId)
-    const { stdout, stderr } = await this.containerExec(`cat "${containerPath}"`)
+    const { stdout, stderr } = await this.execInContainer(`cat "${containerPath}"`)
     if (stderr) {
-      console.error(`Error getting file ${fileId}: ${stderr}`)
+      console.error(`[FileManager] Error reading file ${fileId}: ${stderr}`)
       return undefined
     }
     return stdout
   }
 
-  async getFolder(folderId: string): Promise<string[]> {
-    const remotePaths = await RemoteFileStorage.getFolder(
-      `projects/${this.sandboxId}/${folderId}`
-    )
-    return remotePaths.map((r) =>
-      r.replace(`projects/${this.sandboxId}/`, "")
-    )
-  }
-
-  async saveFile(fileId: string, body: string): Promise<void> {
-    if (!fileId) return
-    if (Buffer.byteLength(body, "utf-8") > MAX_BODY_SIZE) {
-      throw new Error("File size too large. Please reduce the file size.")
+  /**
+   * Save a file: update remote & container
+   */
+  public async saveFile(fileId: string, body: string): Promise<void> {
+    if (Buffer.byteLength(body, 'utf-8') > MAX_BODY_SIZE) {
+      throw new Error('File size too large.')
     }
 
-    console.log(`Saving file ${fileId} with size ${Buffer.byteLength(body, "utf-8")} bytes`)
-    const saveSuccess = await RemoteFileStorage.saveFile(`projects/${this.sandboxId}/${fileId}`, body)
-    if (!saveSuccess) {
-      throw new Error(`Failed to save file ${fileId} to R2`)
-    }
+    // 1) Save to remote
+    await RemoteFileStorage.saveFile(`projects/${this.sandboxId}/${fileId}`, body)
 
-    let file = this.fileData.find((f) => f.id === fileId)
-    if (file) {
-      file.data = body
+    // 2) Update in-memory
+    let fileEntry = this.fileData.find(f => f.id === fileId)
+    if (fileEntry) {
+      fileEntry.data = body
     } else {
-      file = { id: fileId, data: body }
-      this.fileData.push(file)
+      fileEntry = { id: fileId, data: body }
+      this.fileData.push(fileEntry)
     }
 
-    await this.writeToContainer(path.posix.join(PROJECT_DIR, fileId), body)
-    console.log(`File ${fileId} saved successfully`)
+    // 3) Write to container
+    const containerPath = path.posix.join(PROJECT_DIR, fileId)
+    await this.writeToContainer(containerPath, body)
+
+    // Optionally update the file structure
+    this.refreshFileList?.(this.files)
   }
 
-  async moveFile(fileId: string, folderId: string) {
-    const parts = fileId.split("/")
+  /**
+   * Move a file from fileId => folderId (like old logic).
+   */
+  public async moveFile(fileId: string, folderId: string) {
+    // new path
+    const parts = fileId.split('/')
     const newFileId = path.posix.join(folderId, parts[parts.length - 1])
 
+    // move in container
     const oldPath = path.posix.join(PROJECT_DIR, fileId)
     const newPath = path.posix.join(PROJECT_DIR, newFileId)
-    console.log(`Moving file from ${oldPath} to ${newPath}`)
-    await this.containerExec(
+    await this.execInContainer(
       `mkdir -p "$(dirname "${newPath}")" && mv "${oldPath}" "${newPath}"`
     )
 
-    const dataEntry = this.fileData.find((f) => f.id === fileId)
+    // rename in our in-memory data
+    const dataEntry = this.fileData.find(f => f.id === fileId)
     if (dataEntry) {
       dataEntry.id = newFileId
-      console.log(`Renaming file data entry from ${fileId} to ${newFileId}`)
-      const renameSuccess = await RemoteFileStorage.renameFile(
+      // rename in remote
+      await RemoteFileStorage.renameFile(
         `projects/${this.sandboxId}/${fileId}`,
         `projects/${this.sandboxId}/${newFileId}`,
-        dataEntry.data
+        dataEntry.data,
       )
-      if (!renameSuccess) {
-        throw new Error(`Failed to rename file ${fileId} to ${newFileId} in R2`)
-      }
     }
 
-    await this.updateFileStructure()
-    console.log(`File structure updated after moving file`)
+    // update file structure
+    await this.loadLocalFiles()
+    this.refreshFileList?.(this.files)
   }
 
-  async createFile(name: string): Promise<boolean> {
-    console.log(`Creating new file: ${name}`)
+  /**
+   * Create a new, empty file
+   */
+  public async createFile(name: string): Promise<boolean> {
+    // you might want to check total project size
     const size = await RemoteFileStorage.getProjectSize(this.sandboxId)
-    console.log(`Current project size: ${size} bytes`)
     if (size > 200 * 1024 * 1024) {
-      throw new Error("Project size exceeded. Please delete some files.")
+      throw new Error('Project size exceeded. Please delete some files.')
     }
-    const id = `/${name}`
-    await this.writeToContainer(path.posix.join(PROJECT_DIR, id), "")
-    const createSuccess = await RemoteFileStorage.createFile(`projects/${this.sandboxId}/${id}`)
-    if (!createSuccess) {
-      throw new Error(`Failed to create file ${id} in R2`)
-    }
-    console.log(`File ${name} created successfully`)
+
+    // create empty file in container
+    const fileId = `/${name}`
+    const containerPath = path.posix.join(PROJECT_DIR, fileId)
+    await this.execInContainer(`mkdir -p "$(dirname "${containerPath}")" && touch "${containerPath}"`)
+
+    // add to remote
+    await RemoteFileStorage.createFile(`projects/${this.sandboxId}${fileId}`)
+
+    // update local references
+    this.fileData.push({ id: name, data: '' })
+    await this.loadLocalFiles()
+    this.refreshFileList?.(this.files)
     return true
   }
 
-  public async loadFileContent(): Promise<TFileData[]> {
-    console.log(`Loading file content for sandbox ${this.sandboxId}`)
-    const { stdout, stderr } = await this.containerExec(
-      `find "${PROJECT_DIR}" -path "${PROJECT_DIR}/node_modules" -prune -o -type f -print`
-    )
-    if (stderr) {
-      console.error(`Error finding files for download: ${stderr}`)
-      return []
-    }
-
-    const filePaths = stdout.split("\n").map((p) => p.trim()).filter(Boolean)
-    console.log(`Found ${filePaths.length} files for download`)
-
-    for (const containerPath of filePaths) {
-      const relative = path.posix.relative(PROJECT_DIR, containerPath)
-      console.log(`Loading content for file: ${relative}`)
-      const { stdout: fileContent, stderr: fileError } = await this.containerExec(`cat "${containerPath}"`)
-      if (fileError) {
-        console.error(`Error reading file ${relative}: ${fileError}`)
-        continue
-      }
-      const existing = this.fileData.find((f) => f.id === relative)
-      if (existing) {
-        existing.data = fileContent
-      } else {
-        this.fileData.push({ id: relative, data: fileContent })
-      }
-    }
-    console.log(`File content loaded for download`)
-    return this.fileData
-  }
-
-  public async getFilesForDownload(): Promise<string> {
-    console.log(`Preparing files for download in sandbox ${this.sandboxId}`)
-    const zip = new JSZip()
-    await this.loadFileContent()
-    if (this.fileData.length === 0) {
-      console.log("No files found to download")
-      return ""
-    }
-
-    for (const f of this.fileData) {
-      zip.file(f.id, f.data)
-      console.log(`Added file to zip: ${f.id}`)
-    }
-    const zipBlob = await zip.generateAsync({
-      type: "nodebuffer",
-      compression: "DEFLATE",
-      compressionOptions: { level: 6 },
-    })
-    const base64 = zipBlob.toString('base64') // Use Buffer for Node.js
-    console.log(`Files zipped successfully`)
-    return base64
-  }
-
-  async createFolder(name: string) {
-    console.log(`Creating new folder: ${name}`)
-    const id = `/${name}`
-    await this.containerExec(`mkdir -p "${path.posix.join(PROJECT_DIR, id)}"`)
-    await RemoteFileStorage.createFile(`projects/${this.sandboxId}/${id}/.keep`) // Optionally, create a .keep file
-    console.log(`Folder ${name} created successfully`)
-  }
-
-  async renameFile(fileId: string, newName: string) {
-    console.log(`Renaming file ${fileId} to ${newName}`)
-    const dataEntry = this.fileData.find((f) => f.id === fileId)
+  /**
+   * Rename a file within the same folder, or possibly newName
+   */
+  public async renameFile(fileId: string, newName: string): Promise<void> {
+    const dataEntry = this.fileData.find(f => f.id === fileId)
     if (!dataEntry) return
 
-    const parts = fileId.split("/")
+    // figure new path
+    const parts = fileId.split('/')
     parts[parts.length - 1] = newName
-    const newFileId = parts.join("/")
+    const newFileId = parts.join('/')
 
+    // container ops
     const oldPath = path.posix.join(PROJECT_DIR, fileId)
     const newPath = path.posix.join(PROJECT_DIR, newFileId)
-    await this.containerExec(
-      `mkdir -p "$(dirname "${newPath}")" && mv "${oldPath}" "${newPath}"`
-    )
+    await this.execInContainer(`mkdir -p "$(dirname "${newPath}")" && mv "${oldPath}" "${newPath}"`)
 
-    const renameSuccess = await RemoteFileStorage.renameFile(
+    // rename in remote
+    await RemoteFileStorage.renameFile(
       `projects/${this.sandboxId}/${fileId}`,
       `projects/${this.sandboxId}/${newFileId}`,
       dataEntry.data
     )
-    if (!renameSuccess) {
-      throw new Error(`Failed to rename file ${fileId} to ${newFileId} in R2`)
-    }
     dataEntry.id = newFileId
-    console.log(`File ${fileId} renamed to ${newFileId} successfully`)
+
+    // reload structure
+    await this.loadLocalFiles()
+    this.refreshFileList?.(this.files)
   }
 
-  async deleteFile(fileId: string) {
-    console.log(`Deleting file: ${fileId}`)
-    const dataEntry = this.fileData.find((f) => f.id === fileId)
+  /**
+   * Delete a file from container & remote
+   */
+  public async deleteFile(fileId: string) {
+    const dataEntry = this.fileData.find(f => f.id === fileId)
     if (!dataEntry) {
-      console.warn(`File ${fileId} not found in fileData`)
-      return
+      console.warn(`[FileManager] File ${fileId} not found in fileData, but deleting anyway`)
     }
 
-    await this.containerExec(`rm -f "${path.posix.join(PROJECT_DIR, fileId)}"`)
-    const deleteSuccess = await RemoteFileStorage.deleteFile(`projects/${this.sandboxId}/${fileId}`)
-    if (!deleteSuccess) {
-      throw new Error(`Failed to delete file ${fileId} from R2`)
-    }
-    console.log(`File ${fileId} deleted successfully`)
-    return this.updateFileStructure()
+    // remove from container
+    const containerPath = path.posix.join(PROJECT_DIR, fileId)
+    await this.execInContainer(`rm -f "${containerPath}"`)
+
+    // remove from remote
+    await RemoteFileStorage.deleteFile(`projects/${this.sandboxId}/${fileId}`)
+
+    // update local data
+    this.fileData = this.fileData.filter(f => f.id !== fileId)
+
+    // reload container file list & notify
+    await this.loadLocalFiles()
+    this.refreshFileList?.(this.files)
   }
 
-  async deleteFolder(folderId: string) {
-    console.log(`Deleting folder: ${folderId}`)
-    const remotePaths = await RemoteFileStorage.getFolder(
-      `projects/${this.sandboxId}/${folderId}`
-    )
+  /**
+   * Delete a folder recursively
+   */
+  public async deleteFolder(folderId: string) {
+    const remotePaths = await RemoteFileStorage.getFolder(`projects/${this.sandboxId}/${folderId}`)
+    // remotePaths are full keys like "projects/<sandboxId>/<folderId>/something..."
+    // We remove them from container & remote
     for (const fileKey of remotePaths) {
-      const containerPath = fileKey.replace(
-        `projects/${this.sandboxId}/`,
-        PROJECT_DIR + '/'
-      )
-      await this.containerExec(`rm -rf "${containerPath}"`)
-      const deleteSuccess = await RemoteFileStorage.deleteFile(fileKey)
-      if (!deleteSuccess) {
-        console.warn(`Failed to delete file ${fileKey} from R2`)
-      } else {
-        console.log(`Deleted file from container and R2: ${fileKey}`)
-      }
+      const containerPath = fileKey.replace(`projects/${this.sandboxId}/`, PROJECT_DIR + '/')
+      await this.execInContainer(`rm -rf "${containerPath}"`)
+      await RemoteFileStorage.deleteFile(fileKey)
+      this.fileData = this.fileData.filter(f => `projects/${this.sandboxId}/${f.id}` !== fileKey)
     }
-    return this.updateFileStructure()
-  }
 
-  // Stop the inotifywait process
-  async closeWatchers() {
-    if (this.watcherProcess) {
-      console.log(`Stopping watcher process for sandbox ${this.sandboxId}`)
-      this.watcherProcess.kill("SIGINT")
-      this.watcherProcess = null
-    }
+    // reload
+    await this.loadLocalFiles()
+    this.refreshFileList?.(this.files)
   }
 }

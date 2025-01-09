@@ -1,112 +1,66 @@
 // /backend/server/src/index.ts
-import cors from "cors"
-import dotenv from "dotenv"
-import express, { Express } from "express"
-import fs from "fs"
-import { createServer } from "http"
-import { Server, Socket } from "socket.io"
-import Docker from "dockerode"
+import cors from 'cors'
+import dotenv from 'dotenv'
+import express, { Express } from 'express'
+import fs from 'fs'
+import { createServer } from 'http'
+import { Server, Socket } from 'socket.io'
+import { ConnectionManager } from './ConnectionManager'
+import { DokkuClient } from './DokkuClient'
+import { Sandbox } from './Sandbox'
+import { SecureGitClient } from './SecureGitClient'
+import { socketAuth } from './socketAuth'
+import { TFile, TFolder } from './types'
 
-import { ConnectionManager } from "./ConnectionManager"
-import { DokkuClient } from "./DokkuClient"
-import { Sandbox } from "./Sandbox"
-import { SecureGitClient } from "./SecureGitClient"
-import { socketAuth } from "./socketAuth" // Import the new socketAuth middleware
-import { TFile, TFolder } from "./types"
-
-// Log errors and send a notification to the client
+// Error handling
 export const handleErrors = (message: string, error: any, socket: Socket) => {
   console.error(message, error)
   socket.emit("error", `${message} ${error.message ?? error}`)
 }
 
-// Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error)
-  // Do not exit the process
 })
 
-// Handle unhandled promise rejections
 process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason)
-  // Do not exit the process
+  console.error("Unhandled Rejection:", promise, reason)
 })
 
-// Initialize containers and managers
-const connections = new ConnectionManager()
-const sandboxes: Record<string, Sandbox> = {}
-
-// Load environment variables
+// Set up
 dotenv.config()
-
-// Initialize Express app and create HTTP server
 const app: Express = express()
 const port = process.env.PORT || 4000
 app.use(cors())
-
 const httpServer = createServer(app)
-const io = new Server(httpServer, {
-  cors: {
-    origin: "*", // Allow connections from any origin
-  },
+const io = new Server(httpServer, { cors: { origin: '*' } })
+
+// Connection manager
+const connections = new ConnectionManager()
+const sandboxes: Record<string, Sandbox> = {}
+
+// Optional: Dokku & Git
+const dokkuClient = (process.env.DOKKU_HOST && process.env.DOKKU_KEY && process.env.DOKKU_USERNAME)
+  ? new DokkuClient({
+      host: process.env.DOKKU_HOST,
+      username: process.env.DOKKU_USERNAME,
+      privateKey: fs.readFileSync(process.env.DOKKU_KEY),
+    })
+  : null
+
+dokkuClient?.connect().catch(err => {
+  console.error('[index] Failed to connect Dokku client:', err)
 })
 
-// Middleware for socket authentication
+const gitClient = (process.env.DOKKU_HOST && process.env.DOKKU_KEY)
+  ? new SecureGitClient(`dokku@${process.env.DOKKU_HOST}`, process.env.DOKKU_KEY)
+  : null
+
+// Socket auth
 io.use(socketAuth)
 
-// Check for required environment variables
-if (!process.env.DOKKU_HOST) {
-  console.warn("Environment variable DOKKU_HOST is not defined")
-}
-if (!process.env.DOKKU_USERNAME) {
-  console.warn("Environment variable DOKKU_USERNAME is not defined")
-}
-if (!process.env.DOKKU_KEY) {
-  console.warn("Environment variable DOKKU_KEY is not defined")
-}
-
-// Initialize Dokku client
-const dokkuClient =
-  process.env.DOKKU_HOST &&
-  process.env.DOKKU_KEY &&
-  process.env.DOKKU_USERNAME
-    ? new DokkuClient({
-        host: process.env.DOKKU_HOST,
-        username: process.env.DOKKU_USERNAME,
-        privateKey: fs.readFileSync(process.env.DOKKU_KEY),
-      })
-    : null
-
-if (dokkuClient) {
-  dokkuClient.connect().catch(error => {
-    console.error("Failed to connect Dokku client:", error)
-  })
-}
-
-// Initialize Git client used to deploy Dokku apps
-const gitClient =
-  process.env.DOKKU_HOST && process.env.DOKKU_KEY
-    ? new SecureGitClient(
-        `dokku@${process.env.DOKKU_HOST}`,
-        process.env.DOKKU_KEY
-      )
-    : null
-
-// ----------------------------------------------------
-//       CREATE THE DOCKER CLIENT USING DOCKERODE
-// ----------------------------------------------------
-const dockerClient = new Docker({
-  // Adjust settings for your Docker environment.
-  // For instance:
-  socketPath: "/var/run/docker.sock", // Ensure this is correct for your environment
-  // or host: "127.0.0.1",
-  // port: 2375,
-})
-
-// Handle a client connecting to the server
+// On connection
 io.on("connection", async (socket) => {
   try {
-    // This data is added by our authentication middleware
     const data = socket.data as {
       userId: string
       sandboxId: string
@@ -114,114 +68,70 @@ io.on("connection", async (socket) => {
       type: string
     }
 
-    console.log(`User ${data.userId} connected to sandbox ${data.sandboxId} as ${data.isOwner ? 'owner' : 'collaborator'}`)
+    console.log(`[index] User ${data.userId} connected to sandbox ${data.sandboxId} as owner? ${data.isOwner}`)
 
-    // Register the connection
     connections.addConnectionForSandbox(socket, data.sandboxId, data.isOwner)
-    console.log(`Registered connection for sandbox ${data.sandboxId}`)
 
-    // Disable access unless the sandbox owner is connected
     if (!data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
-      console.log(`Access denied for user ${data.userId} to sandbox ${data.sandboxId} because owner is not connected`)
-      socket.emit("disableAccess", "The sandbox owner is not connected.")
+      console.log(`[index] Non-owner tried to connect, but owner not present. Disabling access.`)
+      socket.emit("disableAccess", "Sandbox owner not connected.")
       return
     }
 
-    try {
-      // Create or retrieve the sandbox manager for the given sandbox ID
-      let sandbox = sandboxes[data.sandboxId]
-      if (!sandbox) {
-        sandbox = new Sandbox(data.sandboxId, data.type, {
-          // Pass all three: Docker client, Dokku, Git
-          dockerClient,
-          dokkuClient,
-          gitClient,
-        })
-        sandboxes[data.sandboxId] = sandbox
-        console.log(`Created new Sandbox instance for sandbox ${data.sandboxId}`)
-      } else {
-        console.log(`Reusing existing Sandbox instance for sandbox ${data.sandboxId}`)
-      }
-
-      // This callback receives an update when the file list changes,
-      // and notifies all relevant connections in the same sandbox.
-      const sendFileNotifications = (files: (TFolder | TFile)[]) => {
-        connections
-          .connectionsForSandbox(data.sandboxId)
-          .forEach((connSocket: Socket) => {
-            connSocket.emit("loaded", files)
-          })
-      }
-
-      // Initialize the sandbox container environment
-      await sandbox.initialize(sendFileNotifications)
-      console.log(`Sandbox ${data.sandboxId} initialized`)
-
-      socket.emit("loaded", sandbox.fileManager?.files)
-      console.log(`Sent initial file list to user ${data.userId} for sandbox ${data.sandboxId}`)
-
-      // Register event handlers for the sandbox
-      const handlers = sandbox.handlers({
-        userId: data.userId,
-        isOwner: data.isOwner,
-        socket,
+    // Create or reuse sandbox
+    let sandbox = sandboxes[data.sandboxId]
+    if (!sandbox) {
+      sandbox = new Sandbox(data.sandboxId, data.type, {
+        dokkuClient,
+        gitClient
       })
+      sandboxes[data.sandboxId] = sandbox
+      console.log(`[index] Created new Sandbox for ${data.sandboxId}`)
+    }
 
-      Object.entries(handlers).forEach(([event, handler]) => {
-        socket.on(
-          event,
-          async (options: any, callback?: (response: any) => void) => {
-            try {
-              console.log(`Handling event "${event}" for user ${data.userId} in sandbox ${data.sandboxId}`)
-              const result = await handler(options)
-              callback?.(result)
-            } catch (e: any) {
-              handleErrors(`Error processing event "${event}":`, e, socket)
-            }
-          }
-        )
+    // Callback to notify all sockets about file changes
+    const sendFileNotifications = (files: (TFolder | TFile)[]) => {
+      connections.connectionsForSandbox(data.sandboxId).forEach((connSocket: Socket) => {
+        connSocket.emit('loaded', files)
       })
+    }
 
-      socket.emit("ready")
-      console.log(`User ${data.userId} is ready in sandbox ${data.sandboxId}`)
+    // Initialize
+    await sandbox.initialize(sendFileNotifications)
+    socket.emit('loaded', sandbox.fileManager?.files)
+    socket.emit('ready')
 
-      // Handle disconnection event
-      socket.on("disconnect", async () => {
+    // Register event handlers
+    const handlers = sandbox.handlers({ userId: data.userId, isOwner: data.isOwner, socket })
+    Object.entries(handlers).forEach(([event, fn]) => {
+      socket.on(event, async (options: any, callback?: (resp: any) => void) => {
         try {
-          console.log(`User ${data.userId} disconnected from sandbox ${data.sandboxId}`)
-          // Deregister the connection
-          connections.removeConnectionForSandbox(
-            socket,
-            data.sandboxId,
-            data.isOwner
-          )
-          console.log(`Deregistered connection for sandbox ${data.sandboxId}`)
-
-          // If the owner has disconnected from all sockets, close open terminals and watchers.
-          // The sandbox itself will eventually shut down if you have a timeout.
-          if (data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
-            console.log(`Owner disconnected from sandbox ${data.sandboxId}. Disconnecting sandbox.`)
-            await sandbox.disconnect()
-            delete sandboxes[data.sandboxId]
-            socket.broadcast.emit(
-              "disableAccess",
-              "The sandbox owner has disconnected."
-            )
-            console.log(`Sandbox ${data.sandboxId} disconnected and removed from active sandboxes`)
-          }
+          const result = await fn(options)
+          callback?.(result)
         } catch (e: any) {
-          handleErrors("Error disconnecting:", e, socket)
+          handleErrors(`Error in event "${event}": `, e, socket)
         }
       })
-    } catch (e: any) {
-      handleErrors(`Error initializing sandbox ${data.sandboxId}:`, e, socket)
-    }
-  } catch (e: any) {
-    handleErrors("Error connecting:", e, socket)
+    })
+
+    // On disconnect
+    socket.on("disconnect", async () => {
+      console.log(`[index] User ${data.userId} disconnected from ${data.sandboxId}`)
+      connections.removeConnectionForSandbox(socket, data.sandboxId, data.isOwner)
+
+      // If the owner is gone, close the sandbox
+      if (data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
+        console.log(`[index] Owner disconnected from sandbox ${data.sandboxId}. Cleaning up.`)
+        await sandbox.disconnect()
+        delete sandboxes[data.sandboxId]
+        socket.broadcast.emit("disableAccess", "Owner disconnected.")
+      }
+    })
+  } catch (err: any) {
+    handleErrors("[index] Error connecting:", err, socket)
   }
 })
 
-// Start the server
 httpServer.listen(port, () => {
-  console.log(`Server running on port ${port}`)
+  console.log(`[index] Server running on port ${port}`)
 })
