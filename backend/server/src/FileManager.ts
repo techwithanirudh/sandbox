@@ -90,7 +90,7 @@ export class FileManager {
   // Launch `inotifywait` in the container
   private async startWatcher(dir: string) {
     console.log(`Starting inotifywait watcher for directory: ${dir}`)
-    // We'll do `docker exec` via the local shell. That means your Node server must have docker CLI installed
+    // We'll do `docker exec` via the local shell. Ensure your Node server has docker CLI installed
     const containerInfo = await this.container.inspect()
     const containerId = containerInfo.Id
 
@@ -123,16 +123,61 @@ export class FileManager {
     })
   }
 
-  private handleInotifyEvent(line: string) {
+  private async handleInotifyEvent(line: string) {
     // Example line: "CREATE|/workspace/data/subfolder/|newfile.txt"
     const [rawEvent, watchDir, filename] = line.split("|")
     const eventTypes = rawEvent.split(",")
 
     console.log("inotify event:", rawEvent, "dir:", watchDir, "file:", filename)
 
-    // For simplicity, we just reload everything and send a refresh
-    this.loadLocalFiles()
-    this.refreshFileList?.(this.files)
+    const relativeDir = path.posix.relative(PROJECT_DIR, watchDir)
+    const relativePath = path.posix.join(relativeDir, filename)
+    const fullPath = path.posix.join(PROJECT_DIR, relativePath)
+
+    try {
+      if (eventTypes.includes("CREATE") || eventTypes.includes("MODIFY")) {
+        // Handle file creation or modification
+        const { stdout, stderr } = await this.containerExec(`cat "${fullPath}"`)
+        if (stderr) {
+          console.error(`Error reading file ${relativePath}: ${stderr}`)
+          return
+        }
+
+        const fileContent = stdout
+        console.log(`Uploading file ${relativePath} to R2`)
+
+        await RemoteFileStorage.saveFile(`projects/${this.sandboxId}/${relativePath}`, fileContent)
+        console.log(`File ${relativePath} uploaded to R2 successfully`)
+      }
+
+      if (eventTypes.includes("DELETE")) {
+        // Handle file deletion
+        console.log(`Deleting file ${relativePath} from R2`)
+        await RemoteFileStorage.deleteFile(`projects/${this.sandboxId}/${relativePath}`)
+        console.log(`File ${relativePath} deleted from R2 successfully`)
+      }
+
+      if (eventTypes.includes("CREATE,ISDIR") || eventTypes.includes("DELETE,ISDIR")) {
+        // Handle directory creation or deletion
+        const action = eventTypes.includes("CREATE") ? "Creating" : "Deleting"
+        console.log(`${action} directory ${relativePath} in R2`)
+
+        if (eventTypes.includes("CREATE")) {
+          // Optionally, create a .keep file to represent the directory in R2
+          await RemoteFileStorage.createFile(`projects/${this.sandboxId}/${relativePath}/.keep`)
+          console.log(`Directory ${relativePath} created in R2 with .keep file`)
+        } else {
+          await RemoteFileStorage.deleteFile(`projects/${this.sandboxId}/${relativePath}/.keep`)
+          console.log(`Directory ${relativePath} deleted from R2`)
+        }
+      }
+
+      // Refresh file structure and notify clients
+      await this.updateFileStructure()
+      this.refreshFileList?.(this.files)
+    } catch (error) {
+      console.error(`Error handling inotify event for ${relativePath}:`, error)
+    }
   }
 
   // Exec a command inside the container
@@ -149,8 +194,8 @@ export class FileManager {
 
     await new Promise<void>((resolve, reject) => {
       this.container.modem.demuxStream(stream, 
-        { write: (chunk: any) => { stdout += chunk.toString(); } },
-        { write: (chunk: any) => { stderr += chunk.toString(); } }
+        { write: (chunk: Buffer) => { stdout += chunk.toString(); } },
+        { write: (chunk: Buffer) => { stderr += chunk.toString(); } }
       )
       stream.on("end", resolve)
       stream.on("error", reject)
@@ -158,7 +203,7 @@ export class FileManager {
 
     if (stderr) {
       console.error(`Error executing command "${cmd}":`, stderr)
-      // Optionally, you can throw an error here to stop the process
+      // Optionally, throw an error to stop the process
       // throw new Error(stderr)
     }
 
@@ -191,7 +236,7 @@ export class FileManager {
     console.log("Remote paths fetched:", remotePaths)
 
     const localPaths = remotePaths.map((r) =>
-      r.replace(`projects/${this.sandboxId}`, "")
+      r.replace(`projects/${this.sandboxId}/`, "")
     )
     console.log("Local paths derived:", localPaths)
 
@@ -206,7 +251,7 @@ export class FileManager {
     console.log("Remote paths fetched for structure:", remotePaths)
 
     const localPaths = remotePaths.map((r) =>
-      r.replace(`projects/${this.sandboxId}`, "")
+      r.replace(`projects/${this.sandboxId}/`, "")
     )
     console.log("Local paths derived for structure:", localPaths)
 
@@ -219,9 +264,9 @@ export class FileManager {
     const results: TFileData[] = []
     for (const p of paths) {
       if (!p || p.endsWith("/")) continue
-      console.log(`Fetching content for file: projects/${this.sandboxId}${p}`)
+      console.log(`Fetching content for file: projects/${this.sandboxId}/${p}`)
       const content = await RemoteFileStorage.fetchFileContent(
-        `projects/${this.sandboxId}${p}`
+        `projects/${this.sandboxId}/${p}`
       )
       if (content) {
         results.push({ id: p, data: content })
@@ -247,10 +292,10 @@ export class FileManager {
 
   async getFolder(folderId: string): Promise<string[]> {
     const remotePaths = await RemoteFileStorage.getFolder(
-      `projects/${this.sandboxId}${folderId}`
+      `projects/${this.sandboxId}/${folderId}`
     )
     return remotePaths.map((r) =>
-      r.replace(`projects/${this.sandboxId}`, "")
+      r.replace(`projects/${this.sandboxId}/`, "")
     )
   }
 
@@ -261,7 +306,10 @@ export class FileManager {
     }
 
     console.log(`Saving file ${fileId} with size ${Buffer.byteLength(body, "utf-8")} bytes`)
-    await RemoteFileStorage.saveFile(`projects/${this.sandboxId}${fileId}`, body)
+    const saveSuccess = await RemoteFileStorage.saveFile(`projects/${this.sandboxId}/${fileId}`, body)
+    if (!saveSuccess) {
+      throw new Error(`Failed to save file ${fileId} to R2`)
+    }
 
     let file = this.fileData.find((f) => f.id === fileId)
     if (file) {
@@ -290,11 +338,14 @@ export class FileManager {
     if (dataEntry) {
       dataEntry.id = newFileId
       console.log(`Renaming file data entry from ${fileId} to ${newFileId}`)
-      await RemoteFileStorage.renameFile(
-        `projects/${this.sandboxId}${fileId}`,
-        `projects/${this.sandboxId}${newFileId}`,
+      const renameSuccess = await RemoteFileStorage.renameFile(
+        `projects/${this.sandboxId}/${fileId}`,
+        `projects/${this.sandboxId}/${newFileId}`,
         dataEntry.data
       )
+      if (!renameSuccess) {
+        throw new Error(`Failed to rename file ${fileId} to ${newFileId} in R2`)
+      }
     }
 
     await this.updateFileStructure()
@@ -310,7 +361,10 @@ export class FileManager {
     }
     const id = `/${name}`
     await this.writeToContainer(path.posix.join(PROJECT_DIR, id), "")
-    await RemoteFileStorage.createFile(`projects/${this.sandboxId}${id}`)
+    const createSuccess = await RemoteFileStorage.createFile(`projects/${this.sandboxId}/${id}`)
+    if (!createSuccess) {
+      throw new Error(`Failed to create file ${id} in R2`)
+    }
     console.log(`File ${name} created successfully`)
     return true
   }
@@ -361,12 +415,11 @@ export class FileManager {
       console.log(`Added file to zip: ${f.id}`)
     }
     const zipBlob = await zip.generateAsync({
-      type: "blob",
+      type: "nodebuffer",
       compression: "DEFLATE",
       compressionOptions: { level: 6 },
     })
-    const arrayBuf = await zipBlob.arrayBuffer()
-    const base64 = Buffer.from(arrayBuf).toString('base64') // Use Buffer for Node.js
+    const base64 = zipBlob.toString('base64') // Use Buffer for Node.js
     console.log(`Files zipped successfully`)
     return base64
   }
@@ -375,7 +428,7 @@ export class FileManager {
     console.log(`Creating new folder: ${name}`)
     const id = `/${name}`
     await this.containerExec(`mkdir -p "${path.posix.join(PROJECT_DIR, id)}"`)
-    await RemoteFileStorage.createFile(`projects/${this.sandboxId}${id}/.keep`) // Optionally, create a .keep file
+    await RemoteFileStorage.createFile(`projects/${this.sandboxId}/${id}/.keep`) // Optionally, create a .keep file
     console.log(`Folder ${name} created successfully`)
   }
 
@@ -394,11 +447,14 @@ export class FileManager {
       `mkdir -p "$(dirname "${newPath}")" && mv "${oldPath}" "${newPath}"`
     )
 
-    await RemoteFileStorage.renameFile(
-      `projects/${this.sandboxId}${fileId}`,
-      `projects/${this.sandboxId}${newFileId}`,
+    const renameSuccess = await RemoteFileStorage.renameFile(
+      `projects/${this.sandboxId}/${fileId}`,
+      `projects/${this.sandboxId}/${newFileId}`,
       dataEntry.data
     )
+    if (!renameSuccess) {
+      throw new Error(`Failed to rename file ${fileId} to ${newFileId} in R2`)
+    }
     dataEntry.id = newFileId
     console.log(`File ${fileId} renamed to ${newFileId} successfully`)
   }
@@ -412,7 +468,10 @@ export class FileManager {
     }
 
     await this.containerExec(`rm -f "${path.posix.join(PROJECT_DIR, fileId)}"`)
-    await RemoteFileStorage.deleteFile(`projects/${this.sandboxId}${fileId}`)
+    const deleteSuccess = await RemoteFileStorage.deleteFile(`projects/${this.sandboxId}/${fileId}`)
+    if (!deleteSuccess) {
+      throw new Error(`Failed to delete file ${fileId} from R2`)
+    }
     console.log(`File ${fileId} deleted successfully`)
     return this.updateFileStructure()
   }
@@ -420,16 +479,20 @@ export class FileManager {
   async deleteFolder(folderId: string) {
     console.log(`Deleting folder: ${folderId}`)
     const remotePaths = await RemoteFileStorage.getFolder(
-      `projects/${this.sandboxId}${folderId}`
+      `projects/${this.sandboxId}/${folderId}`
     )
     for (const fileKey of remotePaths) {
       const containerPath = fileKey.replace(
-        `projects/${this.sandboxId}`,
-        PROJECT_DIR
+        `projects/${this.sandboxId}/`,
+        PROJECT_DIR + '/'
       )
       await this.containerExec(`rm -rf "${containerPath}"`)
-      await RemoteFileStorage.deleteFile(fileKey)
-      console.log(`Deleted file from container and R2: ${fileKey}`)
+      const deleteSuccess = await RemoteFileStorage.deleteFile(fileKey)
+      if (!deleteSuccess) {
+        console.warn(`Failed to delete file ${fileKey} from R2`)
+      } else {
+        console.log(`Deleted file from container and R2: ${fileKey}`)
+      }
     }
     return this.updateFileStructure()
   }
