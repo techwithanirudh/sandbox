@@ -65,24 +65,29 @@ export class SSHSocketClient {
         return
       }
 
-      this.conn.exec(`echo "${data}" | nc -U ${this.socketPath}`, (err, stream) => {
-        if (err) {
-          reject(err)
-          return
-        }
-        stream
-          .on("close", (code: number, signal: string) => {
-            reject(new Error(`Stream closed with code ${code}, signal ${signal}`))
-          })
-          .on("data", (chunk: Buffer) => {
-            resolve(chunk.toString())
-            stream.close()
-          })
-          .stderr.on("data", (chunk: Buffer) => {
-            reject(new Error(chunk.toString()))
-            stream.close()
-          })
-      })
+      this.conn.exec(
+        `echo "${data}" | nc -U ${this.socketPath}`,
+        (err, stream) => {
+          if (err) {
+            reject(err)
+            return
+          }
+          stream
+            .on("close", (code: number, signal: string) => {
+              reject(
+                new Error(`Stream closed with code ${code}, signal ${signal}`),
+              )
+            })
+            .on("data", (chunk: Buffer) => {
+              resolve(chunk.toString())
+              stream.close()
+            })
+            .stderr.on("data", (chunk: Buffer) => {
+              reject(new Error(chunk.toString()))
+              stream.close()
+            })
+        },
+      )
     })
   }
 }

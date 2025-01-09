@@ -1,6 +1,6 @@
 // /backend/server/src/TerminalManager.ts
-import { Container } from 'dockerode'
-import { Terminal } from './Terminal'
+import { Container } from "dockerode"
+import { Terminal } from "./Terminal"
 
 export class TerminalManager {
   private container: Container
@@ -14,7 +14,7 @@ export class TerminalManager {
     id: string,
     onData: (data: string) => void,
     cols = 80,
-    rows = 24
+    rows = 24,
   ) {
     if (this.terminals[id]) {
       console.log(`[TerminalManager] Terminal ${id} already exists`)

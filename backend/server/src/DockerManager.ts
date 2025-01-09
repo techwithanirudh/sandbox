@@ -1,13 +1,15 @@
 // /backend/server/src/DockerManager.ts
-import Docker, { Container, ContainerCreateOptions } from 'dockerode'
-import { once } from 'events'
+import Docker, { Container, ContainerCreateOptions } from "dockerode"
+import { once } from "events"
 
 export class DockerManager {
   private docker: Docker
   private containers: Map<string, Container> = new Map()
 
   constructor(dockerConfig?: Docker.DockerOptions) {
-    this.docker = new Docker(dockerConfig || { socketPath: '/var/run/docker.sock' })
+    this.docker = new Docker(
+      dockerConfig || { socketPath: "/var/run/docker.sock" },
+    )
   }
 
   /**
@@ -16,7 +18,7 @@ export class DockerManager {
   public async pullImage(imageName: string) {
     console.log(`[DockerManager] Pulling image: ${imageName}`)
     const stream = await this.docker.pull(imageName)
-    await once(stream, 'end')
+    await once(stream, "end")
     console.log(`[DockerManager] Finished pulling image: ${imageName}`)
   }
 
@@ -26,7 +28,7 @@ export class DockerManager {
   public async createContainer(
     id: string,
     options: ContainerCreateOptions,
-    autoStart = true
+    autoStart = true,
   ): Promise<Container> {
     // Remove old container with same ID
     const old = this.containers.get(id)
@@ -67,7 +69,7 @@ export class DockerManager {
       await container.remove({ force: true })
       this.containers.delete(id)
     } catch (err) {
-      console.error('[DockerManager] Error removing container:', err)
+      console.error("[DockerManager] Error removing container:", err)
     }
   }
 }

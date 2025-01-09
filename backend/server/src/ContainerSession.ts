@@ -1,6 +1,6 @@
 // /backend/server/src/ContainerSession.ts
-import { Container } from 'dockerode'
-import { spawn, ChildProcess } from 'child_process'
+import { Container } from "dockerode"
+import { spawn, ChildProcess } from "child_process"
 
 export class ContainerSession {
   private container: Container
@@ -18,24 +18,27 @@ export class ContainerSession {
   /**
    * Run a command using dockerode exec
    */
-  public async execCmd(cmd: string, cwd = '/workspace/data'): Promise<{ stdout: string; stderr: string }> {
+  public async execCmd(
+    cmd: string,
+    cwd = "/workspace/data",
+  ): Promise<{ stdout: string; stderr: string }> {
     const exec = await this.container.exec({
-      Cmd: ['bash', '-c', `cd "${cwd}" && ${cmd}`],
+      Cmd: ["bash", "-c", `cd "${cwd}" && ${cmd}`],
       AttachStdout: true,
-      AttachStderr: true
+      AttachStderr: true,
     })
     const stream = await exec.start({})
-    let stdout = ''
-    let stderr = ''
+    let stdout = ""
+    let stderr = ""
 
     await new Promise<void>((resolve, reject) => {
       this.container.modem.demuxStream(
         stream,
         { write: (chunk: any) => (stdout += chunk.toString()) },
-        { write: (chunk: any) => (stderr += chunk.toString()) }
+        { write: (chunk: any) => (stderr += chunk.toString()) },
       )
-      stream.on('end', resolve)
-      stream.on('error', reject)
+      stream.on("end", resolve)
+      stream.on("error", reject)
     })
 
     return { stdout, stderr }
@@ -45,33 +48,37 @@ export class ContainerSession {
    * Start an inotify-based watcher by spawning local 'docker exec'
    */
   public startWatcher(dirToWatch: string, onEvent: (line: string) => void) {
-    console.log(`[ContainerSession] Starting watcher in container ${this.containerId} on ${dirToWatch}`)
+    console.log(
+      `[ContainerSession] Starting watcher in container ${this.containerId} on ${dirToWatch}`,
+    )
 
-    const child = spawn('docker', [
-      'exec',
-      '-i',
+    const child = spawn("docker", [
+      "exec",
+      "-i",
       this.container.id,
-      'inotifywait',
-      '-m', // monitor
-      '-r', // recursive
-      '--format',
-      '%e|%w|%f',
-      dirToWatch
+      "inotifywait",
+      "-m", // monitor
+      "-r", // recursive
+      "--format",
+      "%e|%w|%f",
+      dirToWatch,
     ])
 
-    child.stdout.on('data', (data: Buffer) => {
-      const lines = data.toString().split('\n').filter(Boolean)
-      lines.forEach(line => {
+    child.stdout.on("data", (data: Buffer) => {
+      const lines = data.toString().split("\n").filter(Boolean)
+      lines.forEach((line) => {
         onEvent(line)
       })
     })
 
-    child.stderr.on('data', (data: Buffer) => {
+    child.stderr.on("data", (data: Buffer) => {
       console.error(`[${this.containerId}] inotify stderr: ${data.toString()}`)
     })
 
-    child.on('exit', code => {
-      console.log(`[ContainerSession] Watcher for ${this.containerId} exited with code ${code}`)
+    child.on("exit", (code) => {
+      console.log(
+        `[ContainerSession] Watcher for ${this.containerId} exited with code ${code}`,
+      )
     })
 
     this.watchers.push(child)
@@ -79,7 +86,7 @@ export class ContainerSession {
 
   public stopWatchers() {
     for (const w of this.watchers) {
-      w.kill('SIGINT')
+      w.kill("SIGINT")
     }
     this.watchers = []
   }

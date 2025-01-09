@@ -41,9 +41,9 @@ import { TFile, TFolder } from "./types"
  */
 export function generateFileStructure(paths: string[]): (TFolder | TFile)[] {
   const root: TFolder = {
-    id: "/", 
-    type: "folder", 
-    name: "/", 
+    id: "/",
+    type: "folder",
+    name: "/",
     children: [],
   }
 
@@ -57,7 +57,7 @@ export function generateFileStructure(paths: string[]): (TFolder | TFile)[] {
       const isFile = i === parts.length - 1 // last part is presumably file
 
       // See if this folder/file already exists
-      let existing = current.children.find(child => child.name === part)
+      let existing = current.children.find((child) => child.name === part)
 
       if (existing) {
         // If it's a folder, descend into it

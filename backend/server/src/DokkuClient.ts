@@ -30,10 +30,14 @@ export class DokkuClient extends SSHSocketClient {
   }
 
   async getAppCreatedAt(appName: string): Promise<number> {
-    const response = await this.sendCommand(`apps:report --app-created-at ${appName}`)
+    const response = await this.sendCommand(
+      `apps:report --app-created-at ${appName}`,
+    )
     const createdAt = parseInt(response.output.trim(), 10)
     if (isNaN(createdAt)) {
-      throw new Error(`Failed to retrieve creation timestamp for app ${appName}`)
+      throw new Error(
+        `Failed to retrieve creation timestamp for app ${appName}`,
+      )
     }
     return createdAt
   }

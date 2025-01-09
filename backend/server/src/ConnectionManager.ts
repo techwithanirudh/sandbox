@@ -3,9 +3,15 @@ import { Socket } from "socket.io"
 
 class Counter {
   private count: number = 0
-  increment() { this.count++ }
-  decrement() { this.count = Math.max(0, this.count - 1) }
-  getValue() { return this.count }
+  increment() {
+    this.count++
+  }
+  decrement() {
+    this.count = Math.max(0, this.count - 1)
+  }
+  getValue() {
+    return this.count
+  }
 }
 
 export class ConnectionManager {
@@ -25,7 +31,11 @@ export class ConnectionManager {
     }
   }
 
-  removeConnectionForSandbox(socket: Socket, sandboxId: string, isOwner: boolean) {
+  removeConnectionForSandbox(
+    socket: Socket,
+    sandboxId: string,
+    isOwner: boolean,
+  ) {
     this.sockets[sandboxId]?.delete(socket)
     if (isOwner) {
       this.ownerConnections[sandboxId]?.decrement()
