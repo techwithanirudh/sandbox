@@ -1,12 +1,15 @@
 // /backend/server/src/FileManager.ts
 
-import { Container } from "dockerode"
 import path from "path"
+import { Container } from "dockerode"
 import tar from "tar-stream"
-import RemoteFileStorage from "./RemoteFileStorage"
+import { spawn } from "child_process"
 import { MAX_BODY_SIZE } from "./ratelimit"
+
+import RemoteFileStorage from "./RemoteFileStorage"
 import { TFile, TFileData, TFolder } from "./types"
 import { generateFileStructure } from "./utils-filetree"
+import { InotifyWatcher, InotifyEvent } from "./InotifyWatcher"
 
 const PROJECT_DIR = "/workspaces/project"
 
@@ -15,9 +18,11 @@ export class FileManager {
   private container: Container
   private refreshFileList: ((files: (TFolder | TFile)[]) => void) | null
 
-  // The in-memory representation of the files.
   public files: (TFolder | TFile)[]
   public fileData: TFileData[]
+
+  // Our inotify wrapper
+  private watcher: InotifyWatcher | null = null
 
   constructor(
     sandboxId: string,
@@ -33,46 +38,136 @@ export class FileManager {
   }
 
   /**
-   * Initialize the FileManager:
-   * 1) Download the file structure & data from remote storage.
-   * 2) Sync them into the container.
-   * 3) Load the container's file list => memory.
+   * Initialize:
+   * 1) Download remote => local memory
+   * 2) Sync into container
+   * 3) Load container => memory
+   * 4) Start watchers
    */
   async initialize(): Promise<void> {
     console.log(`[FileManager] Initializing for sandbox ${this.sandboxId}`)
-    try {
-      await this.updateFileStructure()
-      await this.updateFileData()
-      await this.syncFilesIntoContainer()
-      await this.loadLocalFiles()
-      console.log(
-        `[FileManager] Initialization complete for sandbox ${this.sandboxId}`,
-      )
-    } catch (error) {
-      console.error(`[FileManager] Error initializing:`, error)
-      throw error
+
+    // 1) Pull the file structure from remote storage
+    await this.updateFileStructure()
+    await this.updateFileData()
+
+    // 2) Copy them into the container
+    await this.syncFilesIntoContainer()
+
+    // 3) Load local container files => memory
+    await this.loadLocalFiles()
+
+    // 4) Start watchers for live sync
+    await this.startWatchers()
+
+    console.log(
+      `[FileManager] Initialization complete for sandbox ${this.sandboxId}`,
+    )
+  }
+
+  /**
+   * Start watchers by calling InotifyWatcher on /workspace/data
+   */
+  private async startWatchers() {
+    if (this.watcher) {
+      console.log("[FileManager] Watchers already running")
+      return
+    }
+    this.watcher = new InotifyWatcher()
+    const containerInfo = await this.container.inspect()
+    const containerId = containerInfo.Id
+
+    this.watcher.startWatching(
+      containerId,
+      PROJECT_DIR,
+      async (evt: InotifyEvent) => {
+        await this.handleInotifyEvent(evt)
+      },
+    )
+  }
+
+  /**
+   * Stop watchers
+   */
+  public closeWatchers() {
+    if (this.watcher) {
+      this.watcher.stopWatching()
+      this.watcher = null
     }
   }
 
-  /**
-   * Get the contents of a given folder from remote storage.
-   * Returns an array of local file paths within that folder.
-   */
-  public async getFolder(folderId: string): Promise<string[]> {
-    // For remote: `folderId` might be something like "src" or "src/components"
-    const remotePaths = await RemoteFileStorage.getFolder(
-      `projects/${this.sandboxId}/${folderId}`,
-    )
-    // Strip the prefix so we get local file paths
-    const localPaths = remotePaths.map((r) =>
-      r.replace(`projects/${this.sandboxId}/`, ""),
-    )
-    return localPaths
+  // ----------------------------------------------------------------
+  //  Inotify Event Handling
+  // ----------------------------------------------------------------
+  private async handleInotifyEvent(evt: InotifyEvent): Promise<void> {
+    // For example: rawEvents="CREATE", watchDir="/workspace/data/src/", filename="test.js", events=["CREATE"]
+    const { events, watchDir, filename } = evt
+
+    // Build relative path from PROJECT_DIR
+    const relativeDir = path.posix.relative(PROJECT_DIR, watchDir)
+    const relativePath = path.posix.join(relativeDir, filename)
+
+    // If it's a directory event (ISDIR), handle differently
+    const isDir = events.some((e) => e.includes("ISDIR"))
+
+    if (isDir) {
+      // e.g. "CREATE,ISDIR"
+      if (events.includes("CREATE") || events.includes("MOVED_TO")) {
+        // Possibly create a .keep in R2. Or do nothing if you only track files.
+        console.log(`[FileManager] Detected new directory: ${relativePath}`)
+      }
+      if (events.includes("DELETE") || events.includes("MOVED_FROM")) {
+        console.log(`[FileManager] Directory removed: ${relativePath}`)
+        // Possibly remove the .keep from R2
+      }
+      return
+    }
+
+    // If it's a file
+    if (events.includes("CREATE") || events.includes("MODIFY")) {
+      // read the file content from container, upload to R2
+      const { stdout, stderr } = await this.execInContainer(
+        `cat "${path.posix.join(PROJECT_DIR, relativePath)}"`,
+      )
+      if (stderr) {
+        console.error(
+          `[FileManager] Error reading file ${relativePath}:`,
+          stderr,
+        )
+        return
+      }
+      const content = stdout
+
+      console.log(
+        `[FileManager] Uploading changed file ${relativePath} to R2 (size=${content.length})`,
+      )
+      await RemoteFileStorage.saveFile(
+        `projects/${this.sandboxId}/${relativePath}`,
+        content,
+      )
+      console.log(`[FileManager] Uploaded ${relativePath} to R2 successfully.`)
+    }
+
+    if (events.includes("DELETE")) {
+      // remove from R2
+      console.log(`[FileManager] Deleting file ${relativePath} from R2`)
+      await RemoteFileStorage.deleteFile(
+        `projects/${this.sandboxId}/${relativePath}`,
+      )
+      console.log(`[FileManager] Deleted ${relativePath} from R2.`)
+    }
+
+    // Optionally handle rename (MOVED_FROM/MOVED_TO)...
+
+    // After changes, reload local file structure
+    await this.loadLocalFiles()
+    this.refreshFileList?.(this.files)
   }
 
-  /**
-   * Helper that updates `this.files` by generating a file-tree structure.
-   */
+  // ----------------------------------------------------------------
+  //  Remote => Container => Memory Sync
+  // ----------------------------------------------------------------
+
   private async updateFileStructure(): Promise<(TFolder | TFile)[]> {
     const remotePaths = await RemoteFileStorage.getSandboxPaths(this.sandboxId)
     const localPaths = remotePaths.map((r) =>
@@ -82,9 +177,6 @@ export class FileManager {
     return this.files
   }
 
-  /**
-   * Helper that updates `this.fileData` by fetching file contents from remote.
-   */
   private async updateFileData(): Promise<TFileData[]> {
     const remotePaths = await RemoteFileStorage.getSandboxPaths(this.sandboxId)
     const localPaths = remotePaths.map((r) =>
@@ -103,9 +195,6 @@ export class FileManager {
     return this.fileData
   }
 
-  /**
-   * Writes this.fileData into the container using tar-stream.
-   */
   private async syncFilesIntoContainer(): Promise<void> {
     for (const file of this.fileData) {
       const containerPath = path.posix.join(PROJECT_DIR, file.id)
@@ -113,9 +202,6 @@ export class FileManager {
     }
   }
 
-  /**
-   * Reads the container's file list via `find`, updates `this.files`.
-   */
   private async loadLocalFiles(): Promise<void> {
     const { stdout, stderr } = await this.execInContainer(
       `find "${PROJECT_DIR}" -type f`,
@@ -124,7 +210,6 @@ export class FileManager {
       console.error("[FileManager] Error listing container files:", stderr)
       return
     }
-
     const localPaths = stdout
       .split("\n")
       .map((p) => p.trim())
@@ -134,9 +219,10 @@ export class FileManager {
     this.files = generateFileStructure(localPaths)
   }
 
-  /**
-   * Runs a command in the container, returning {stdout, stderr}.
-   */
+  // ----------------------------------------------------------------
+  //  Exec & PutArchive Helpers
+  // ----------------------------------------------------------------
+
   private async execInContainer(
     cmd: string,
   ): Promise<{ stdout: string; stderr: string }> {
@@ -170,35 +256,34 @@ export class FileManager {
     return { stdout, stderr }
   }
 
-  /**
-   * Writes one file into the container using a tar-stream.
-   */
-  private async writeToContainer(
-    containerPath: string,
-    data: string,
-  ): Promise<void> {
-    try {
-      const pack = tar.pack()
-      const relativePath = containerPath.startsWith("/")
-        ? containerPath.slice(1)
-        : containerPath
+  private async writeToContainer(containerPath: string, data: string) {
+    const tarPack = tar.pack()
+    // strip leading slash for correct tar relative path
+    const relPath = containerPath.startsWith("/")
+      ? containerPath.slice(1)
+      : containerPath
 
-      pack.entry({ name: relativePath }, data)
-      pack.finalize()
+    tarPack.entry({ name: relPath }, data)
+    tarPack.finalize()
 
-      await this.container.putArchive(pack, { path: "/" })
-    } catch (error) {
-      console.error(
-        `[FileManager] Error writing to container at ${containerPath}:`,
-        error,
-      )
-      throw error
-    }
+    await this.container.putArchive(tarPack, { path: "/" })
   }
 
-  // ----------------------------------------------------------------
-  // Public API: File / Folder Operations
-  // ----------------------------------------------------------------
+  /**
+   * Get the contents of a given folder from remote storage.
+   * Returns an array of local file paths within that folder.
+   */
+  public async getFolder(folderId: string): Promise<string[]> {
+    // For remote: `folderId` might be something like "src" or "src/components"
+    const remotePaths = await RemoteFileStorage.getFolder(
+      `projects/${this.sandboxId}/${folderId}`,
+    )
+    // Strip the prefix so we get local file paths
+    const localPaths = remotePaths.map((r) =>
+      r.replace(`projects/${this.sandboxId}/`, ""),
+    )
+    return localPaths
+  }
 
   public async getFile(fileId: string): Promise<string | undefined> {
     const containerPath = path.posix.join(PROJECT_DIR, fileId)
@@ -389,5 +474,10 @@ export class FileManager {
       compression: "DEFLATE",
     })
     return zipBlob.toString("base64")
+  }
+
+  public async closeAll(): Promise<void> {
+    this.closeWatchers()
+    // do other cleanup if needed
   }
 }

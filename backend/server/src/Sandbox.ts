@@ -1,49 +1,52 @@
 // /backend/server/src/Sandbox.ts
-import { Socket } from "socket.io"
-import { DockerManager } from "./DockerManager"
-import { ContainerSession } from "./ContainerSession"
-import { CONTAINER_TIMEOUT } from "./constants"
-import { DokkuClient } from "./DokkuClient"
-import { FileManager } from "./FileManager"
-import {
+
+import { Socket } from 'socket.io'
+import { DockerManager } from './DockerManager'          // or your own Docker manager
+import { FileManager } from './FileManager'              // the new FileManager with watchers
+import { TerminalManager } from './TerminalManager'
+import { DokkuClient } from './DokkuClient'
+import { SecureGitClient } from './SecureGitClient'
+import { TFile, TFolder } from './types'
+import { 
   createFileRL,
   createFolderRL,
   deleteFileRL,
   renameFileRL,
   saveFileRL,
-} from "./ratelimit"
-import { SecureGitClient } from "./SecureGitClient"
-import { TerminalManager } from "./TerminalManager"
-import { TFile, TFolder } from "./types"
-import { LockManager } from "./utils"
-import path from "path"
+} from './ratelimit'
+import { LockManager } from './utils'
+import { CONTAINER_TIMEOUT } from './constants'
 
-/**
- * Map the “type” (like 'reactjs') to Docker images.
- * Adjust to your naming scheme.
- */
+// If you have multiple images depending on 'type', define a map:
 const imageMap: Record<string, string> = {
-  vanillajs: "gitwit-vanillajs",
-  reactjs: "gitwit-reactjs",
-  nextjs: "gitwit-nextjs",
-  streamlit: "gitwit-streamlit",
-  php: "gitwit-php",
-  default: "gitwit-universal",
+  vanillajs: 'gitwit-vanillajs',
+  reactjs: 'gitwit-reactjs',
+  nextjs: 'gitwit-nextjs',
+  streamlit: 'gitwit-streamlit',
+  php: 'gitwit-php',
+  default: 'gitwit-universal',
 }
 
+// We'll use a single DockerManager instance for simplicity
 const dockerManager = new DockerManager()
 const lockManager = new LockManager()
 
 export class Sandbox {
+  // Basic properties
   sandboxId: string
   type: string
 
-  // Docker-based container logic
-  containerSession: ContainerSession | null
+  // Docker container references
+  // (If you had a ContainerSession, you could store that. 
+  // For now, we'll do something simpler.)
+  containerId: string | null = null
 
-  // Additional managers/clients
-  fileManager: FileManager | null
-  terminalManager: TerminalManager | null
+  // Our watchers-based FileManager
+  fileManager: FileManager | null = null
+  // Optional: Terminal manager
+  terminalManager: TerminalManager | null = null
+
+  // Extra clients
   dokkuClient: DokkuClient | null
   gitClient: SecureGitClient | null
 
@@ -53,113 +56,116 @@ export class Sandbox {
     {
       dokkuClient,
       gitClient,
-    }: { dokkuClient: DokkuClient | null; gitClient: SecureGitClient | null },
+    }: {
+      dokkuClient: DokkuClient | null
+      gitClient: SecureGitClient | null
+    }
   ) {
     this.sandboxId = sandboxId
     this.type = type
-
-    this.containerSession = null
-    this.fileManager = null
-    this.terminalManager = null
-
     this.dokkuClient = dokkuClient
     this.gitClient = gitClient
   }
 
   /**
-   * Initialize (or re-init) the Docker container & managers
+   * Initialize or re-initialize the sandbox:
+   * - Create (or recreate) the Docker container
+   * - Create a FileManager for watchers-based R2 sync
+   * - (Optional) create a TerminalManager
    */
-  async initialize(fileWatchCallback?: (files: (TFolder | TFile)[]) => void) {
+  async initialize(
+    fileWatchCallback?: (files: (TFolder | TFile)[]) => void
+  ) {
     await lockManager.acquireLock(this.sandboxId, async () => {
-      // Decide image
+      // 1) Pick an image
       const image = imageMap[this.type] || imageMap.default
-      console.log(
-        `[Sandbox] Using image: ${image} for sandbox: ${this.sandboxId}`,
-      )
+      console.log(`[Sandbox] Using image: ${image} for sandbox: ${this.sandboxId}`)
 
-      // Create container
+      // 2) Create or recreate container with DockerManager
+      //    We'll store under the same ID as sandboxId for convenience
       const container = await dockerManager.createContainer(this.sandboxId, {
         Image: image,
-        Cmd: ["tail", "-f", "/dev/null"],
+        Cmd: ['tail', '-f', '/dev/null'], // keep container alive
         Tty: true,
       })
+      this.containerId = container.id
 
-      // Create session
-      this.containerSession = new ContainerSession(
-        container,
-        this.sandboxId,
-        CONTAINER_TIMEOUT,
-      )
+      console.log(`[Sandbox] Created container for sandbox ${this.sandboxId}, containerId=${container.id}`)
     })
 
-    if (!this.containerSession) {
-      throw new Error("[Sandbox] Container session not created!")
-    }
-
-    // FileManager
+    // 3) Now set up FileManager (which starts watchers)
     if (!this.fileManager) {
+      const container = dockerManager.getContainer(this.sandboxId)
+      if (!container) {
+        throw new Error(`[Sandbox] Could not find container after creation.`)
+      }
+
       this.fileManager = new FileManager(
         this.sandboxId,
-        this.containerSession["container"],
-        fileWatchCallback ?? null,
+        container,
+        fileWatchCallback ?? null
       )
       await this.fileManager.initialize()
     }
 
-    // TerminalManager
+    // 4) TerminalManager if needed
     if (!this.terminalManager) {
-      this.terminalManager = new TerminalManager(
-        this.containerSession["container"],
-      )
+      const container = dockerManager.getContainer(this.sandboxId)
+      if (!container) {
+        throw new Error(`[Sandbox] Could not find container to init TerminalManager.`)
+      }
+      this.terminalManager = new TerminalManager(container)
     }
 
-    console.log(`[Sandbox] Sandbox ${this.sandboxId} initialized successfully.`)
+    console.log(`[Sandbox] Sandbox ${this.sandboxId} is fully initialized.`)
   }
 
   /**
-   * Extend the container’s life on each heartbeat. If it times out, we remove it from Docker.
+   * A heartbeat approach if you want to forcibly remove container after some idle time, etc.
+   * If you want to implement timeouts, do so here, or in your main index code.
    */
   heartbeat() {
-    this.containerSession?.resetTimeout(async () => {
-      console.log(
-        `[Sandbox] Container ${this.sandboxId} timed out; removing...`,
-      )
-      await dockerManager.removeContainer(this.sandboxId)
-    })
+    // (You could track a last-heard timestamp here or something else.)
+    // Example:
+    // if (someTimeout logic)...
+
+    // For now, we do nothing. If you want, you can do:
+    // setTimeout(() => dockerManager.removeContainer(this.sandboxId), 120_000)
   }
 
   /**
-   * Called when the “owner” truly disconnects. Shuts down watchers, terminals, and container.
+   * Disconnect: close watchers, kill terminals, remove container if desired
    */
   async disconnect() {
     console.log(`[Sandbox] Disconnecting sandbox ${this.sandboxId}...`)
-    this.containerSession?.stopWatchers()
-    await this.terminalManager?.closeAllTerminals()
-    await dockerManager.removeContainer(this.sandboxId)
-    this.containerSession?.cleanup()
+    // 1) Close watchers
+    await this.fileManager?.closeWatchers()
 
-    this.containerSession = null
+    // 2) Close terminals
+    await this.terminalManager?.closeAllTerminals()
+
+    // 3) Remove container if you want
+    await dockerManager.removeContainer(this.sandboxId)
+    console.log(`[Sandbox] Container removed for sandbox ${this.sandboxId}`)
+
+    // Clear references
     this.fileManager = null
     this.terminalManager = null
+    this.containerId = null
   }
 
   /**
-   * Handlers for socket events. Return an object with function per event name.
+   * Returns an object with event handlers for socket usage.
    */
   handlers(connection: { userId: string; isOwner: boolean; socket: Socket }) {
-    // Basic heartbeat
+    // Use your original approach of returning a map:
     const handleHeartbeat = () => {
       this.heartbeat()
     }
 
-    // --- File Ops ---
+    // --- FILES ---
     const handleGetFile = ({ fileId }: any) => {
       return this.fileManager?.getFile(fileId)
-    }
-
-    const handleGetFolder = ({ folderId }: any) => {
-      // For example, in your old code you had `FileManager.getFolder()`.
-      return this.fileManager?.getFolder(folderId)
     }
 
     const handleSaveFile = async ({ fileId, body }: any) => {
@@ -173,15 +179,12 @@ export class Sandbox {
 
     const handleCreateFile = async ({ name }: any) => {
       await createFileRL.consume(connection.userId, 1)
-      const success = await this.fileManager?.createFile(name)
-      return { success }
+      return { success: await this.fileManager?.createFile(name) }
     }
 
     const handleCreateFolder = async ({ name }: any) => {
       await createFolderRL.consume(connection.userId, 1)
-      // If you have `fileManager.createFolder(...)`
-      await this.fileManager?.createFolder(name)
-      return { success: true }
+      return { success: await this.fileManager?.createFolder(name) }
     }
 
     const handleRenameFile = async ({ fileId, newName }: any) => {
@@ -195,26 +198,24 @@ export class Sandbox {
     }
 
     const handleDeleteFolder = async ({ folderId }: any) => {
-      // If you have a method to do this
       return this.fileManager?.deleteFolder(folderId)
     }
 
-    /**
-     * Example: handleDownloadFiles
-     * You might do something like creating a Zip from the container’s files or from remote.
-     * If you already have a method in FileManager (like `getFilesForDownload()`), just call it.
-     */
+    const handleGetFolder = ({ folderId }: any) => {
+      return this.fileManager?.getFolder(folderId)
+    }
+
     const handleDownloadFiles = async () => {
-      if (!this.fileManager) throw new Error("[Sandbox] No file manager")
+      if (!this.fileManager) throw new Error('No file manager')
       const zipBase64 = await this.fileManager.getFilesForDownload()
       return { zipBlob: zipBase64 }
     }
 
-    // --- Terminal / PTY ---
+    // --- TERMINALS ---
     const handleCreateTerminal = async ({ id }: any) => {
       await lockManager.acquireLock(this.sandboxId, async () => {
         await this.terminalManager?.createTerminal(id, (output: string) => {
-          connection.socket.emit("terminalResponse", { id, data: output })
+          connection.socket.emit('terminalResponse', { id, data: output })
         })
       })
     }
@@ -231,14 +232,14 @@ export class Sandbox {
       return this.terminalManager?.closeTerminal(id)
     }
 
-    // --- Dokku stuff ---
+    // --- DOKKU STUFF ---
     const handleListApps = async () => {
-      if (!this.dokkuClient) throw new Error("No Dokku client.")
+      if (!this.dokkuClient) throw new Error('No Dokku client available')
       return { success: true, apps: await this.dokkuClient.listApps() }
     }
 
     const handleGetAppCreatedAt = async ({ appName }: any) => {
-      if (!this.dokkuClient) throw new Error("No Dokku client.")
+      if (!this.dokkuClient) throw new Error('No Dokku client available')
       const createdAt = await this.dokkuClient.getAppCreatedAt(appName)
       return { success: true, createdAt }
     }
@@ -250,21 +251,21 @@ export class Sandbox {
       return { success: true, exists }
     }
 
-    // --- Deployment via SecureGitClient ---
+    // --- DEPLOY VIA GIT ---
     const handleDeploy = async () => {
-      if (!this.gitClient) throw new Error("No git client")
-      if (!this.fileManager) throw new Error("No file manager")
-      // gather file data from fileManager
-      const fileData = this.fileManager.fileData
-      await this.gitClient.pushFiles(fileData, this.sandboxId)
+      if (!this.gitClient) throw new Error('No git client')
+      if (!this.fileManager) throw new Error('No file manager')
+      await this.gitClient.pushFiles(this.fileManager.fileData, this.sandboxId)
       return { success: true }
     }
 
-    // Return them as an object. The socket logic in `index.ts` uses these.
+    // Return the event handlers map
     return {
+      // Some calls
       heartbeat: handleHeartbeat,
+
+      // File ops
       getFile: handleGetFile,
-      getFolder: handleGetFolder,
       saveFile: handleSaveFile,
       moveFile: handleMoveFile,
       createFile: handleCreateFile,
@@ -272,16 +273,20 @@ export class Sandbox {
       renameFile: handleRenameFile,
       deleteFile: handleDeleteFile,
       deleteFolder: handleDeleteFolder,
-      downloadFiles: handleDownloadFiles, // <-- ADDED
-      listApps: handleListApps, // <-- ADDED
-      getAppCreatedAt: handleGetAppCreatedAt, // <-- ADDED
-      getAppExists: handleAppExists, // <-- ADDED
-      deploy: handleDeploy, // <-- ADDED
+      getFolder: handleGetFolder,
+      downloadFiles: handleDownloadFiles,
 
+      // Terminal ops
       createTerminal: handleCreateTerminal,
       resizeTerminal: handleResizeTerminal,
       terminalData: handleTerminalData,
       closeTerminal: handleCloseTerminal,
+
+      // Dokku ops
+      listApps: handleListApps,
+      getAppCreatedAt: handleGetAppCreatedAt,
+      getAppExists: handleAppExists,
+      deploy: handleDeploy,
     }
   }
 }
