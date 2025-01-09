@@ -1,4 +1,4 @@
-// TerminalManager.ts
+import Docker, { Container, Exec } from "dockerode"
 
 // A structure to store the exec object and the open stream
 type TerminalSession = {
