@@ -90,9 +90,7 @@ export class Sandbox {
     }
 
     const templateTypes = ["vanillajs", "reactjs", "nextjs", "streamlit", "php"]
-    const baseImage = templateTypes.includes(this.type)
-      ? `gitwit-${this.type}`
-      : "base"
+    const baseImage = "mcr.microsoft.com/devcontainers/universal:linux"
 
     // Make sure we have the image (pull if needed)
     try {
