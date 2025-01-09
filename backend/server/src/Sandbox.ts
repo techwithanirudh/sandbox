@@ -101,6 +101,13 @@ export class Sandbox {
       throw error
     }
 
+    try {
+      const existing = this.dockerClient.getContainer(this.sandboxId);
+      await existing.remove({ force: true }); 
+    } catch (e) {
+      console.log("Container No")
+    }
+
     // Create + start container
     console.log(`Creating container for sandbox ${this.sandboxId}`)
     this.container = await this.dockerClient.createContainer({
