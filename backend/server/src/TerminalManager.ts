@@ -1,13 +1,15 @@
-import Docker, { Container, Exec } from "dockerode"
+// TerminalManager.ts
 
-/**
- * Manages pseudo-terminals (shell sessions) in a Docker container using `exec`.
- */
+// A structure to store the exec object and the open stream
+type TerminalSession = {
+  exec: Docker.Exec,
+  stream: NodeJS.Socket
+}
+
 export class TerminalManager {
   private container: Container
-  private terminals: Record<string, Exec> = {}
-  // Optionally track the live input streams if you want to write without re-attaching
-  // private streams: Record<string, NodeJS.WritableStream> = {}
+  // Instead of just storing Exec, store the entire session
+  private terminals: Record<string, TerminalSession> = {}
 
   constructor(container: Container) {
     this.container = container
@@ -18,10 +20,9 @@ export class TerminalManager {
     onData: (output: string) => void
   ): Promise<void> {
     if (this.terminals[id]) {
-      return
+      return // already created
     }
 
-    // Create an exec session
     const exec = await this.container.exec({
       Cmd: ["/bin/bash"],
       AttachStdin: true,
@@ -30,50 +31,51 @@ export class TerminalManager {
       Tty: true,
     })
 
-    // Start the exec
     const stream = await exec.start({ hijack: true, stdin: true })
-    this.terminals[id] = exec
 
-    // Handle output
+    // Convert the Duplex stream to a raw NodeJS socket
+    // Dockerode returns a multiplexed stream so you might need to demux or do the “modem.demuxStream” if you want separate stdout/stderr
+    // But for now, let's assume the default merges them.
     stream.on("data", (chunk: Buffer) => {
       onData(chunk.toString("utf-8"))
     })
 
-    // Optionally run some initial commands
-    const initialCommands = ["cd /home/user/project", "clear"]
-    for (const cmd of initialCommands) {
-      stream.write(cmd + "\r")
-    }
+    // Store both the exec and the stream in memory
+    this.terminals[id] = { exec, stream }
+
+    // (Optional) run initial commands
+    stream.write("cd /home/user/project\r")
+    stream.write("clear\r")
 
     console.log("Created Docker terminal:", id)
   }
 
+  async sendTerminalData(id: string, data: string): Promise<void> {
+    const session = this.terminals[id]
+    if (!session) {
+      return
+    }
+    // Write data to the same stream
+    session.stream.write(data)
+  }
+
   async resizeTerminal(dimensions: { cols: number; rows: number }): Promise<void> {
-    // Docker’s exec has a resize method
-    for (const exec of Object.values(this.terminals)) {
+    for (const { exec } of Object.values(this.terminals)) {
       await exec.resize(dimensions)
     }
   }
 
-  async sendTerminalData(id: string, data: string): Promise<void> {
-    const exec = this.terminals[id]
-    if (!exec) return
-
-    // Re-attach to push data
-    const stream = await exec.start({ hijack: true, stdin: true })
-    stream.write(data)
-  }
-
   async closeTerminal(id: string): Promise<void> {
-    if (!this.terminals[id]) return
-    // There's no forced kill for an exec session except by killing processes inside the container,
-    // or writing `exit\r`. We'll just remove references.
+    const session = this.terminals[id]
+    if (!session) return
+    // There's no direct "kill" of a Docker Exec except by killing the process in the container (e.g. `exit`).
+    // We can write 'exit\r' or just remove references
+    session.stream.write("exit\r")
     delete this.terminals[id]
   }
 
   async closeAllTerminals() {
-    const ids = Object.keys(this.terminals)
-    for (const id of ids) {
+    for (const id of Object.keys(this.terminals)) {
       await this.closeTerminal(id)
     }
   }
