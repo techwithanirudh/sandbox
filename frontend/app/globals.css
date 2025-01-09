@@ -102,24 +102,24 @@
 .light .gradient-button-bg {
   background: radial-gradient(
     circle at top,
-    #f5f5f5 0%, /* Very light gray */
-    #e0e0e0 50%  /* Soft gray */
+    #f5f5f5 0%,
+    /* Very light gray */ #e0e0e0 50% /* Soft gray */
   );
 }
 
 .light .gradient-button {
   background: radial-gradient(
     circle at bottom,
-    hsl(0, 0%, 85%) -10%, /* Slightly darker gray */
-    hsl(0, 0%, 95%) 50%   /* Very soft light gray */
+    hsl(0, 0%, 85%) -10%,
+    /* Slightly darker gray */ hsl(0, 0%, 95%) 50% /* Very soft light gray */
   );
 }
 
 .light .gradient-button-bg > div:hover {
   background: radial-gradient(
     circle at bottom,
-    hsl(0, 0%, 80%) -10%, /* Slightly darker gray for hover */
-    hsl(0, 0%, 90%) 80%   /* Softer gray */
+    hsl(0, 0%, 80%) -10%,
+    /* Slightly darker gray for hover */ hsl(0, 0%, 90%) 80% /* Softer gray */
   );
 }
 
