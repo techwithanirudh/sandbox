@@ -1,20 +1,9 @@
 // /backend/server/src/RemoteFileStorage.ts
 import * as dotenv from "dotenv"
 import { R2Files } from "./types"
-import winston from "winston"
+import logger from "./logger" // <-- Import the centralized logger
 
 dotenv.config()
-
-const logger = winston.createLogger({
-  level: "info",
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(
-      ({ timestamp, level, message }) => `${timestamp} [${level.toUpperCase()}] ${message}`
-    )
-  ),
-  transports: [new winston.transports.Console()],
-})
 
 export const RemoteFileStorage = {
   /**
@@ -212,7 +201,7 @@ export const RemoteFileStorage = {
       if (!res.ok) {
         throw new Error(`Failed to fetch project size: ${res.statusText}`)
       }
-      const size = (await res.json()).size
+      const { size } = await res.json()
       logger.info(`Fetched project size: ${size} bytes for sandbox ID: ${id}`)
       return size
     } catch (error) {

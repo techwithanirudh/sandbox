@@ -8,21 +8,8 @@ import { MAX_BODY_SIZE } from "./ratelimit"
 import { TFile, TFileData, TFolder } from "./types"
 import { generateFileStructure } from "./utils-filetree"
 import chokidar, { FSWatcher, WatchOptions } from "chokidar"
-import winston from "winston"
 import tar from "tar-stream"
-
-// Initialize Logger
-const logger = winston.createLogger({
-  level: "info",
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(
-      ({ timestamp, level, message }: winston.Logform.TransformableInfo) =>
-        `${timestamp} [${level.toUpperCase()}] ${message}`
-    )
-  ),
-  transports: [new winston.transports.Console()],
-})
+import logger from "./logger" // <-- Import the centralized logger
 
 /**
  * We'll store all project files in /workspace/data inside the container.
@@ -220,8 +207,8 @@ export class FileManager {
 
         this.container.modem.demuxStream(
           stream,
-          { write: (chunk: Buffer) => { stdout += chunk.toString(); } },
-          { write: (chunk: Buffer) => { stderr += chunk.toString(); } }
+          { write: (chunk: Buffer) => { stdout += chunk.toString() } },
+          { write: (chunk: Buffer) => { stderr += chunk.toString() } }
         )
 
         stream.on("end", () => {
@@ -277,13 +264,10 @@ export class FileManager {
     logger.info(`File structure updated for sandbox ${this.sandboxId}`)
   }
 
-  /**
-   * Public Methods Accessible from Sandbox.ts
-   */
+  // ----------------------------------------------------------------
+  // Public Methods (referenced in Sandbox.ts)
+  // ----------------------------------------------------------------
 
-  /**
-   * Get a file's content
-   */
   public async getFile(fileId: string): Promise<string | undefined> {
     const fullPath = path.posix.join(PROJECT_DIR, fileId)
     try {
@@ -295,9 +279,6 @@ export class FileManager {
     }
   }
 
-  /**
-   * Get a folder's contents
-   */
   public async getFolder(folderId: string): Promise<string[]> {
     const remotePaths = await RemoteFileStorage.getFolder(
       `projects/${this.sandboxId}/${folderId}`
@@ -307,9 +288,6 @@ export class FileManager {
     )
   }
 
-  /**
-   * Save a file's content
-   */
   public async saveFile(fileId: string, body: string): Promise<void> {
     if (!fileId) return
     if (Buffer.byteLength(body, "utf-8") > MAX_BODY_SIZE) {
@@ -334,9 +312,6 @@ export class FileManager {
     logger.info(`File ${fileId} saved successfully`)
   }
 
-  /**
-   * Move a file to a new folder
-   */
   public async moveFile(fileId: string, folderId: string): Promise<void> {
     const newFileId = path.posix.join(folderId, path.posix.basename(fileId))
     const oldPath = path.posix.join(PROJECT_DIR, fileId)
@@ -363,9 +338,6 @@ export class FileManager {
     this.refreshFileList?.(this.files)
   }
 
-  /**
-   * Create a new file
-   */
   public async createFile(name: string): Promise<boolean> {
     logger.info(`Creating new file: ${name}`)
     const size = await RemoteFileStorage.getProjectSize(this.sandboxId)
@@ -383,9 +355,6 @@ export class FileManager {
     return true
   }
 
-  /**
-   * Create a new folder
-   */
   public async createFolder(name: string): Promise<void> {
     logger.info(`Creating new folder: ${name}`)
     const id = `/${name}`
@@ -394,9 +363,6 @@ export class FileManager {
     logger.info(`Folder ${name} created successfully`)
   }
 
-  /**
-   * Rename a file
-   */
   public async renameFile(fileId: string, newName: string): Promise<void> {
     logger.info(`Renaming file ${fileId} to ${newName}`)
     const dataEntry = this.fileData.find((f) => f.id === fileId)
@@ -423,9 +389,6 @@ export class FileManager {
     this.refreshFileList?.(this.files)
   }
 
-  /**
-   * Delete a file
-   */
   public async deleteFile(fileId: string): Promise<void> {
     logger.info(`Deleting file: ${fileId}`)
     const dataEntry = this.fileData.find((f) => f.id === fileId)
@@ -443,9 +406,6 @@ export class FileManager {
     await this.updateFileStructure()
   }
 
-  /**
-   * Delete a folder
-   */
   public async deleteFolder(folderId: string): Promise<void> {
     logger.info(`Deleting folder: ${folderId}`)
     const remotePaths = await RemoteFileStorage.getFolder(
@@ -454,7 +414,7 @@ export class FileManager {
     for (const fileKey of remotePaths) {
       const containerPath = fileKey.replace(
         `projects/${this.sandboxId}/`,
-        path.posix.join(PROJECT_DIR, '')
+        path.posix.join(PROJECT_DIR, "")
       )
       await this.executeContainerCommand(`rm -rf "${containerPath}"`)
       const deleteSuccess = await RemoteFileStorage.deleteFile(fileKey)
@@ -467,9 +427,6 @@ export class FileManager {
     await this.updateFileStructure()
   }
 
-  /**
-   * Load file content into memory
-   */
   public async loadFileContent(): Promise<TFileData[]> {
     logger.info(`Loading file content for sandbox ${this.sandboxId}`)
     const filePaths = await this.executeContainerCommand(
@@ -494,9 +451,6 @@ export class FileManager {
     return this.fileData
   }
 
-  /**
-   * Prepare files for download as a ZIP archive
-   */
   public async getFilesForDownload(): Promise<string> {
     logger.info(`Preparing files for download in sandbox ${this.sandboxId}`)
     const zip = new JSZip()
@@ -516,14 +470,11 @@ export class FileManager {
       compression: "DEFLATE",
       compressionOptions: { level: 6 },
     })
-    const base64 = zipBlob.toString('base64') // Use Buffer for Node.js
+    const base64 = zipBlob.toString("base64") // Use Buffer for Node.js
     logger.info(`Files zipped successfully`)
     return base64
   }
 
-  /**
-   * Clean up watchers when done
-   */
   async closeWatchers() {
     if (this.watcher) {
       logger.info(`Closing file watcher for sandbox ${this.sandboxId}`)

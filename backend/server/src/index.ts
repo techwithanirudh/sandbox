@@ -11,35 +11,28 @@ import { ConnectionManager } from "./ConnectionManager"
 import { DokkuClient } from "./DokkuClient"
 import { Sandbox } from "./Sandbox"
 import { SecureGitClient } from "./SecureGitClient"
-import { socketAuth } from "./socketAuth" // Import the new socketAuth middleware
+import { socketAuth } from "./socketAuth"
 import { TFile, TFolder } from "./types"
+import logger from "./logger"
 
-// Log errors and send a notification to the client
 export const handleErrors = (message: string, error: any, socket: Socket) => {
-  console.error(message, error)
+  logger.error(`${message} ${error}`)
   socket.emit("error", `${message} ${error.message ?? error}`)
 }
 
-// Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
-  console.error("Uncaught Exception:", error)
-  // Do not exit the process
+  logger.error(`Uncaught Exception: ${error}`)
 })
 
-// Handle unhandled promise rejections
 process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason)
-  // Do not exit the process
+  logger.error(`Unhandled Rejection at: ${promise} reason: ${reason}`)
 })
 
-// Initialize containers and managers
 const connections = new ConnectionManager()
 const sandboxes: Record<string, Sandbox> = {}
 
-// Load environment variables
 dotenv.config()
 
-// Initialize Express app and create HTTP server
 const app: Express = express()
 const port = process.env.PORT || 4000
 app.use(cors())
@@ -47,25 +40,22 @@ app.use(cors())
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // Allow connections from any origin
+    origin: "*",
   },
 })
 
-// Middleware for socket authentication
 io.use(socketAuth)
 
-// Check for required environment variables
 if (!process.env.DOKKU_HOST) {
-  console.warn("Environment variable DOKKU_HOST is not defined")
+  logger.warn("Environment variable DOKKU_HOST is not defined")
 }
 if (!process.env.DOKKU_USERNAME) {
-  console.warn("Environment variable DOKKU_USERNAME is not defined")
+  logger.warn("Environment variable DOKKU_USERNAME is not defined")
 }
 if (!process.env.DOKKU_KEY) {
-  console.warn("Environment variable DOKKU_KEY is not defined")
+  logger.warn("Environment variable DOKKU_KEY is not defined")
 }
 
-// Initialize Dokku client
 const dokkuClient =
   process.env.DOKKU_HOST &&
   process.env.DOKKU_KEY &&
@@ -78,73 +68,59 @@ const dokkuClient =
     : null
 
 if (dokkuClient) {
-  dokkuClient.connect().catch(error => {
-    console.error("Failed to connect Dokku client:", error)
+  dokkuClient.connect().catch((error) => {
+    logger.error(`Failed to connect Dokku client: ${error}`)
   })
 }
 
-// Initialize Git client used to deploy Dokku apps
 const gitClient =
   process.env.DOKKU_HOST && process.env.DOKKU_KEY
-    ? new SecureGitClient(
-        `dokku@${process.env.DOKKU_HOST}`,
-        process.env.DOKKU_KEY
-      )
+    ? new SecureGitClient(`dokku@${process.env.DOKKU_HOST}`, process.env.DOKKU_KEY)
     : null
 
-// ----------------------------------------------------
-//       CREATE THE DOCKER CLIENT USING DOCKERODE
-// ----------------------------------------------------
 const dockerClient = new Docker({
-  // Adjust settings for your Docker environment.
-  // For instance:
-  socketPath: "/var/run/docker.sock", // Ensure this is correct for your environment
-  // or host: "127.0.0.1",
-  // port: 2375,
+  socketPath: "/var/run/docker.sock",
 })
 
-// Handle a client connecting to the server
 io.on("connection", async (socket) => {
   try {
-    // This data is added by our authentication middleware
     const data = socket.data as {
       userId: string
       sandboxId: string
       isOwner: boolean
       type: string
     }
+    logger.info(
+      `User ${data.userId} connected to sandbox ${data.sandboxId} as ${
+        data.isOwner ? "owner" : "collaborator"
+      }`
+    )
 
-    console.log(`User ${data.userId} connected to sandbox ${data.sandboxId} as ${data.isOwner ? 'owner' : 'collaborator'}`)
-
-    // Register the connection
     connections.addConnectionForSandbox(socket, data.sandboxId, data.isOwner)
-    console.log(`Registered connection for sandbox ${data.sandboxId}`)
+    logger.info(`Registered connection for sandbox ${data.sandboxId}`)
 
-    // Disable access unless the sandbox owner is connected
     if (!data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
-      console.log(`Access denied for user ${data.userId} to sandbox ${data.sandboxId} because owner is not connected`)
+      logger.warn(
+        `Access denied for user ${data.userId} to sandbox ${data.sandboxId} because owner is not connected`
+      )
       socket.emit("disableAccess", "The sandbox owner is not connected.")
       return
     }
 
     try {
-      // Create or retrieve the sandbox manager for the given sandbox ID
       let sandbox = sandboxes[data.sandboxId]
       if (!sandbox) {
         sandbox = new Sandbox(data.sandboxId, data.type, {
-          // Pass all three: Docker client, Dokku, Git
           dockerClient,
           dokkuClient,
           gitClient,
         })
         sandboxes[data.sandboxId] = sandbox
-        console.log(`Created new Sandbox instance for sandbox ${data.sandboxId}`)
+        logger.info(`Created new Sandbox instance for sandbox ${data.sandboxId}`)
       } else {
-        console.log(`Reusing existing Sandbox instance for sandbox ${data.sandboxId}`)
+        logger.info(`Reusing existing Sandbox instance for sandbox ${data.sandboxId}`)
       }
 
-      // This callback receives an update when the file list changes,
-      // and notifies all relevant connections in the same sandbox.
       const sendFileNotifications = (files: (TFolder | TFile)[]) => {
         connections
           .connectionsForSandbox(data.sandboxId)
@@ -153,14 +129,14 @@ io.on("connection", async (socket) => {
           })
       }
 
-      // Initialize the sandbox container environment
       await sandbox.initialize(sendFileNotifications)
-      console.log(`Sandbox ${data.sandboxId} initialized`)
+      logger.info(`Sandbox ${data.sandboxId} initialized`)
 
       socket.emit("loaded", sandbox.fileManager?.files)
-      console.log(`Sent initial file list to user ${data.userId} for sandbox ${data.sandboxId}`)
+      logger.info(
+        `Sent initial file list to user ${data.userId} for sandbox ${data.sandboxId}`
+      )
 
-      // Register event handlers for the sandbox
       const handlers = sandbox.handlers({
         userId: data.userId,
         isOwner: data.isOwner,
@@ -168,46 +144,41 @@ io.on("connection", async (socket) => {
       })
 
       Object.entries(handlers).forEach(([event, handler]) => {
-        socket.on(
-          event,
-          async (options: any, callback?: (response: any) => void) => {
-            try {
-              console.log(`Handling event "${event}" for user ${data.userId} in sandbox ${data.sandboxId}`)
-              const result = await handler(options)
-              callback?.(result)
-            } catch (e: any) {
-              handleErrors(`Error processing event "${event}":`, e, socket)
-            }
+        socket.on(event, async (options: any, callback?: (response: any) => void) => {
+          try {
+            logger.info(
+              `Handling event "${event}" for user ${data.userId} in sandbox ${data.sandboxId}`
+            )
+            const result = await handler(options)
+            callback?.(result)
+          } catch (e: any) {
+            handleErrors(`Error processing event "${event}":`, e, socket)
           }
-        )
+        })
       })
 
       socket.emit("ready")
-      console.log(`User ${data.userId} is ready in sandbox ${data.sandboxId}`)
+      logger.info(`User ${data.userId} is ready in sandbox ${data.sandboxId}`)
 
-      // Handle disconnection event
       socket.on("disconnect", async () => {
         try {
-          console.log(`User ${data.userId} disconnected from sandbox ${data.sandboxId}`)
-          // Deregister the connection
-          connections.removeConnectionForSandbox(
-            socket,
-            data.sandboxId,
-            data.isOwner
-          )
-          console.log(`Deregistered connection for sandbox ${data.sandboxId}`)
+          logger.info(`User ${data.userId} disconnected from sandbox ${data.sandboxId}`)
+          connections.removeConnectionForSandbox(socket, data.sandboxId, data.isOwner)
+          logger.info(`Deregistered connection for sandbox ${data.sandboxId}`)
 
-          // If the owner has disconnected from all sockets, close open terminals and watchers.
-          // The sandbox itself will eventually shut down if you have a timeout.
           if (data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
-            console.log(`Owner disconnected from sandbox ${data.sandboxId}. Disconnecting sandbox.`)
+            logger.info(
+              `Owner disconnected from sandbox ${data.sandboxId}. Disconnecting sandbox.`
+            )
             await sandbox.disconnect()
             delete sandboxes[data.sandboxId]
             socket.broadcast.emit(
               "disableAccess",
               "The sandbox owner has disconnected."
             )
-            console.log(`Sandbox ${data.sandboxId} disconnected and removed from active sandboxes`)
+            logger.info(
+              `Sandbox ${data.sandboxId} disconnected and removed from active sandboxes`
+            )
           }
         } catch (e: any) {
           handleErrors("Error disconnecting:", e, socket)
@@ -221,7 +192,6 @@ io.on("connection", async (socket) => {
   }
 })
 
-// Start the server
 httpServer.listen(port, () => {
-  console.log(`Server running on port ${port}`)
+  logger.info(`Server running on port ${port}`)
 })

@@ -15,6 +15,7 @@ import { SecureGitClient } from "./SecureGitClient"
 import { TerminalManager } from "./TerminalManager"
 import { TFile, TFolder } from "./types"
 import { LockManager } from "./utils"
+import logger from "./logger"
 
 const lockManager = new LockManager()
 
@@ -25,8 +26,7 @@ type DockerContext = {
 }
 
 /**
- * Helper to parse a "http://localhost:xxxx" style port from output,
- * in case you want to turn that into a preview URL.
+ * Helper to parse a "http://localhost:xxxx" style port from output
  */
 function extractPortNumber(inputString: string): number | null {
   const cleanedString = inputString.replace(/\x1B\[[0-9;]*m/g, "")
@@ -42,11 +42,9 @@ export class Sandbox {
   terminalManager: TerminalManager | null
   container: Container | null
 
-  // For deployment
   dokkuClient: DokkuClient | null
   gitClient: SecureGitClient | null
 
-  // Docker
   dockerClient: Docker
 
   constructor(
@@ -59,55 +57,47 @@ export class Sandbox {
     this.fileManager = null
     this.terminalManager = null
     this.container = null
-
     this.dockerClient = dockerClient
     this.dokkuClient = dokkuClient
     this.gitClient = gitClient
   }
 
-  // Ensures we either reuse an existing container or create a new one
   private async ensureContainerExists() {
     if (this.container) {
-      // Check if it's still running
       try {
         const inspect = await this.container.inspect()
         if (inspect.State.Running) {
-          console.log(`Container ${this.sandboxId} is already running`)
+          logger.info(`Container ${this.sandboxId} is already running`)
           return
         }
       } catch (err) {
-        console.log(`Error reusing container for ${this.sandboxId}`, err)
+        logger.warn(`Error reusing container for ${this.sandboxId}: ${err}`)
       }
     }
 
-    // Remove any old container with the same name
     try {
       const existing = this.dockerClient.getContainer(this.sandboxId)
       await existing.remove({ force: true })
-      console.log(`Removed old container with name ${this.sandboxId}`)
+      logger.info(`Removed old container with name ${this.sandboxId}`)
     } catch {
       // It's okay if it doesn't exist
     }
 
-    // Pick an image by type, or default to "base"
     const templateTypes = ["vanillajs", "reactjs", "nextjs", "streamlit", "php"]
     const baseImage = templateTypes.includes(this.type)
       ? `gitwit-${this.type}`
-      : "gitwit-universal" // or "base"
+      : "gitwit-universal"
 
-    // Attempt to pull the image. If it's local-only, this might fail (catch it).
     try {
       await this.dockerClient.pull(baseImage)
-      console.log(`Pulled (or found) image ${baseImage}`)
+      logger.info(`Pulled (or found) image ${baseImage}`)
     } catch (error) {
-      console.warn(`Could not pull image ${baseImage} (might be local-only).`, error)
+      logger.warn(`Could not pull image ${baseImage} (might be local-only). ${error}`)
     }
 
-    // Use a host path for volumes, e.g. /var/sandbox/volumes/sandboxId
-    // So each sandbox has its own directory on the host
     const hostPath = `/var/sandbox/volumes/${this.sandboxId}`
-    
-    console.log(`Creating container for sandbox ${this.sandboxId}`)
+    logger.info(`Creating container for sandbox ${this.sandboxId}`)
+
     this.container = await this.dockerClient.createContainer({
       Image: baseImage,
       name: this.sandboxId,
@@ -115,21 +105,15 @@ export class Sandbox {
       AttachStdout: true,
       AttachStderr: true,
       HostConfig: {
-        // Bind the local host folder to /workspace/data inside the container
         Binds: [`${hostPath}:/workspace/data`],
       },
-      // If your container needs a command that keeps it alive:
-      // Cmd: ["tail", "-f", "/dev/null"]
     })
 
     await this.container.start()
-    console.log(`Container started for sandbox ${this.sandboxId}`)
+    logger.info(`Container started for sandbox ${this.sandboxId}`)
   }
 
-  // Initialize container environment
-  async initialize(
-    fileWatchCallback: ((files: (TFolder | TFile)[]) => void) | undefined
-  ) {
+  async initialize(fileWatchCallback: ((files: (TFolder | TFile)[]) => void) | undefined) {
     await lockManager.acquireLock(this.sandboxId, async () => {
       await this.ensureContainerExists()
     })
@@ -138,13 +122,11 @@ export class Sandbox {
       throw new Error("Failed to create Docker container")
     }
 
-    // Terminal manager
     if (!this.terminalManager) {
       this.terminalManager = new TerminalManager(this.container)
-      console.log(`Terminal manager set up for ${this.sandboxId}`)
+      logger.info(`Terminal manager set up for ${this.sandboxId}`)
     }
 
-    // File manager
     if (!this.fileManager) {
       this.fileManager = new FileManager(
         this.sandboxId,
@@ -155,33 +137,28 @@ export class Sandbox {
     }
   }
 
-  // Shuts down terminals, watchers, and the container
   async disconnect() {
-    // Close all terminals
     await this.terminalManager?.closeAllTerminals()
     this.terminalManager = null
 
-    // Close watchers
     await this.fileManager?.closeWatchers()
     this.fileManager = null
 
-    // Stop + remove container
     if (this.container) {
       try {
         await this.container.stop()
         await this.container.remove({ force: true })
-        console.log(`Stopped and removed container ${this.sandboxId}`)
+        logger.info(`Stopped and removed container ${this.sandboxId}`)
       } catch (error) {
-        console.error(`Error removing container ${this.sandboxId}:`, error)
+        logger.error(`Error removing container ${this.sandboxId}: ${error}`)
       }
     }
     this.container = null
   }
 
-  // Socket event handlers
   handlers(connection: { userId: string; isOwner: boolean; socket: Socket }) {
     const handleHeartbeat = () => {
-      console.log(`Heartbeat from sandbox ${this.sandboxId}`)
+      logger.info(`Heartbeat from sandbox ${this.sandboxId}`)
     }
 
     // File operations
@@ -255,7 +232,6 @@ export class Sandbox {
       await lockManager.acquireLock(this.sandboxId, async () => {
         await this.terminalManager?.createTerminal(id, (output: string) => {
           connection.socket.emit("terminalResponse", { id, data: output })
-          // If we see a local port, let's do a preview link
           const port = extractPortNumber(output)
           if (port) {
             connection.socket.emit("previewURL", `http://localhost:${port}`)

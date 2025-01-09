@@ -1,6 +1,7 @@
+// /backend/server/src/SSHSocketClient.ts
 import { Client } from "ssh2"
+import logger from "./logger"
 
-// Interface defining the configuration for SSH connection
 export interface SSHConfig {
   host: string
   port?: number
@@ -8,7 +9,6 @@ export interface SSHConfig {
   privateKey: Buffer
 }
 
-// Class to handle SSH connections and communicate with a Unix socket
 export class SSHSocketClient {
   private conn: Client
   private config: SSHConfig
@@ -18,87 +18,71 @@ export class SSHSocketClient {
     return this._isConnected
   }
 
-  // Constructor initializes the SSH client and sets up configuration
   constructor(config: SSHConfig, socketPath: string) {
     this.conn = new Client()
-    this.config = { ...config, port: 22 } // Default port to 22 if not provided
+    this.config = { ...config, port: 22 }
     this.socketPath = socketPath
 
     this.setupTerminationHandlers()
   }
 
-  // Set up handlers for graceful termination
   private setupTerminationHandlers() {
     process.on("SIGINT", this.closeConnection.bind(this))
     process.on("SIGTERM", this.closeConnection.bind(this))
   }
 
-  // Method to close the SSH connection
   private closeConnection() {
-    console.log("Closing SSH connection...")
+    logger.info("Closing SSH connection...")
     this.conn.end()
     this._isConnected = false
     process.exit(0)
   }
 
-  // Method to establish the SSH connection
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.conn
         .on("ready", () => {
-          console.log("SSH connection established")
+          logger.info("SSH connection established")
           this._isConnected = true
           resolve()
         })
         .on("error", (err) => {
-          console.error("SSH connection error:", err)
+          logger.error(`SSH connection error: ${err}`)
           this._isConnected = false
           reject(err)
         })
         .on("close", () => {
-          console.log("SSH connection closed")
+          logger.info("SSH connection closed")
           this._isConnected = false
         })
         .connect(this.config)
     })
   }
 
-  // Method to send data through the SSH connection to the Unix socket
   sendData(data: string): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this.isConnected) {
         reject(new Error("SSH connection is not established"))
         return
       }
-
-      // Use netcat to send data to the Unix socket
-      this.conn.exec(
-        `echo "${data}" | nc -U ${this.socketPath}`,
-        (err, stream) => {
-          if (err) {
-            reject(err)
-            return
-          }
-
-          stream
-            .on("close", (code: number, signal: string) => {
-              reject(
-                new Error(
-                  `Stream closed with code ${code} and signal ${signal}`
-                )
-              )
-            })
-            .on("data", (data: Buffer) => {
-              // Netcat remains open until it is closed, so we close the connection once we receive data.
-              resolve(data.toString())
-              stream.close()
-            })
-            .stderr.on("data", (data: Buffer) => {
-              reject(new Error(data.toString()))
-              stream.close()
-            })
+      this.conn.exec(`echo "${data}" | nc -U ${this.socketPath}`, (err, stream) => {
+        if (err) {
+          reject(err)
+          return
         }
-      )
+        stream
+          .on("close", (code: number, signal: string) => {
+            reject(new Error(`Stream closed with code ${code} and signal ${signal}`))
+          })
+          .on("data", (chunk: Buffer) => {
+            resolve(chunk.toString())
+            stream.close()
+          })
+          .stderr.on("data", (chunk: Buffer) => {
+            reject(new Error(chunk.toString()))
+            stream.close()
+          })
+      })
     })
   }
 }
