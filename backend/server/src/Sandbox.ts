@@ -1,6 +1,7 @@
-import { Sandbox as E2BSandbox } from "e2b"
+import Docker, { Container } from "dockerode"
 import { Socket } from "socket.io"
 import { CONTAINER_TIMEOUT } from "./constants"
+import { ConnectionManager } from "./ConnectionManager"
 import { DokkuClient } from "./DokkuClient"
 import { FileManager } from "./FileManager"
 import {
@@ -14,12 +15,19 @@ import { SecureGitClient } from "./SecureGitClient"
 import { TerminalManager } from "./TerminalManager"
 import { TFile, TFolder } from "./types"
 import { LockManager } from "./utils"
+
 const lockManager = new LockManager()
 
-// Define a type for SocketHandler functions
-type SocketHandler<T = Record<string, any>> = (args: T) => any
+type DockerContext = {
+  dockerClient: Docker
+  dokkuClient: DokkuClient | null
+  gitClient: SecureGitClient | null
+}
 
-// Extract port number from a string
+/**
+ * Helper to parse a "http://localhost:xxxx" style port from output,
+ * in case you want to turn that into a preview URL.
+ */
 function extractPortNumber(inputString: string): number | null {
   const cleanedString = inputString.replace(/\x1B\[[0-9;]*m/g, "")
   const regex = /http:\/\/localhost:(\d+)/
@@ -27,159 +35,196 @@ function extractPortNumber(inputString: string): number | null {
   return match ? parseInt(match[1]) : null
 }
 
-type ServerContext = {
-  dokkuClient: DokkuClient | null
-  gitClient: SecureGitClient | null
-}
-
+/**
+ * The Sandbox replaces the old E2B environment with:
+ *   - Docker container management (dockerode)
+ *   - Terminal manager (Docker exec)
+ *   - File watchers (via inotifywait in the container)
+ *   - Dokku for deployment
+ */
 export class Sandbox {
-  // Sandbox properties:
   sandboxId: string
   type: string
   fileManager: FileManager | null
   terminalManager: TerminalManager | null
-  container: E2BSandbox | null
-  // Server context:
+  container: Container | null
+
+  // For deployment:
   dokkuClient: DokkuClient | null
   gitClient: SecureGitClient | null
+
+  // For Docker
+  dockerClient: Docker
 
   constructor(
     sandboxId: string,
     type: string,
-    { dokkuClient, gitClient }: ServerContext
+    { dockerClient, dokkuClient, gitClient }: DockerContext
   ) {
-    // Sandbox properties:
     this.sandboxId = sandboxId
     this.type = type
     this.fileManager = null
     this.terminalManager = null
     this.container = null
-    // Server context:
+
+    // Docker stuff
+    this.dockerClient = dockerClient
+
+    // Keep Dokku references
     this.dokkuClient = dokkuClient
     this.gitClient = gitClient
   }
 
-  // Initializes the container for the sandbox environment
+  // Create or reuse a Docker container
+  private async ensureContainerExists() {
+    if (this.container) {
+      try {
+        const inspect = await this.container.inspect()
+        if (inspect.State.Running) {
+          console.log(`Container ${this.sandboxId} is already running`)
+          return
+        }
+      } catch (err) {
+        console.log(`Error reusing container for ${this.sandboxId}`, err)
+      }
+    }
+
+    const templateTypes = ["vanillajs", "reactjs", "nextjs", "streamlit", "php"]
+    const baseImage = templateTypes.includes(this.type)
+      ? `gitwit-${this.type}`
+      : "base"
+
+    // Make sure we have the image (pull if needed)
+    try {
+      await this.dockerClient.pull(baseImage)
+      console.log(`Pulled image ${baseImage}`)
+    } catch (error) {
+      console.error(`Error pulling image ${baseImage}:`, error)
+      throw error
+    }
+
+    // Create + start container
+    console.log(`Creating container for sandbox ${this.sandboxId}`)
+    this.container = await this.dockerClient.createContainer({
+      Image: baseImage,
+      name: this.sandboxId,
+      Tty: false,
+      AttachStdout: true,
+      AttachStderr: true,
+      // ...
+    })
+    await this.container.start()
+    console.log(`Container started for sandbox ${this.sandboxId}`)
+  }
+
+  // Initialize the container environment
   async initialize(
     fileWatchCallback: ((files: (TFolder | TFile)[]) => void) | undefined
   ) {
-    // Acquire a lock to ensure exclusive access to the sandbox environment
     await lockManager.acquireLock(this.sandboxId, async () => {
-      // Check if a container already exists and is running
-      if (this.container && (await this.container.isRunning())) {
-        console.log(`Found existing container ${this.sandboxId}`)
-      } else {
-        console.log("Creating container", this.sandboxId)
-        // Create a new container with a specified template and timeout
-        const templateTypes = [
-          "vanillajs",
-          "reactjs",
-          "nextjs",
-          "streamlit",
-          "php",
-        ]
-        const template = templateTypes.includes(this.type)
-          ? `gitwit-${this.type}`
-          : `base`
-        this.container = await E2BSandbox.create(template, {
-          timeoutMs: CONTAINER_TIMEOUT,
-        })
-      }
+      await this.ensureContainerExists()
     })
-    // Ensure a container was successfully created
-    if (!this.container) throw new Error("Failed to create container")
 
-    // Initialize the terminal manager if it hasn't been set up yet
+    if (!this.container) {
+      throw new Error("Failed to create Docker container")
+    }
+
+    // Terminal
     if (!this.terminalManager) {
       this.terminalManager = new TerminalManager(this.container)
       console.log(`Terminal manager set up for ${this.sandboxId}`)
     }
 
-    // Initialize the file manager if it hasn't been set up yet
+    // File manager
     if (!this.fileManager) {
       this.fileManager = new FileManager(
         this.sandboxId,
         this.container,
         fileWatchCallback ?? null
       )
-      // Initialize the file manager and emit the initial files
       await this.fileManager.initialize()
     }
   }
 
-  // Called when the client disconnects from the Sandbox
   async disconnect() {
-    // Close all terminals managed by the terminal manager
+    // Close all terminals
     await this.terminalManager?.closeAllTerminals()
-    // This way the terminal manager will be set up again if we reconnect
     this.terminalManager = null
-    // Close all file watchers managed by the file manager
-    await this.fileManager?.closeWatchers()
-    // This way the file manager will be set up again if we reconnect
-    this.fileManager = null
-  }
 
-  handlers(connection: { userId: string; isOwner: boolean; socket: Socket }) {
-    // Handle heartbeat from a socket connection
-    const handleHeartbeat: SocketHandler = (_: any) => {
-      // Only keep the sandbox alive if the owner is still connected
-      if (connection.isOwner) {
-        this.container?.setTimeout(CONTAINER_TIMEOUT)
+    // Stop watchers
+    await this.fileManager?.closeWatchers()
+    this.fileManager = null
+
+    // Optionally shut down the container to free resources
+    if (this.container) {
+      try {
+        await this.container.stop()
+        await this.container.remove({ force: true })
+        console.log(`Stopped and removed container ${this.sandboxId}`)
+      } catch (error) {
+        console.error(`Error removing container ${this.sandboxId}:`, error)
       }
     }
+    this.container = null
+  }
 
-    // Handle getting a file
-    const handleGetFile: SocketHandler = ({ fileId }: any) => {
+  // Here are all the socket event handlers, including Dokku logic:
+  handlers(connection: {
+    userId: string
+    isOwner: boolean
+    socket: Socket
+  }) {
+    // Keep container alive if needed
+    const handleHeartbeat = (_: any) => {
+      console.log(`Heartbeat from sandbox ${this.sandboxId}`)
+      // If you wanted a “timeout reset,” you can do so here.
+    }
+
+    const handleGetFile = ({ fileId }: any) => {
       return this.fileManager?.getFile(fileId)
     }
 
-    // Handle getting a folder
-    const handleGetFolder: SocketHandler = ({ folderId }: any) => {
+    const handleGetFolder = ({ folderId }: any) => {
       return this.fileManager?.getFolder(folderId)
     }
 
-    // Handle saving a file
-    const handleSaveFile: SocketHandler = async ({ fileId, body }: any) => {
+    const handleSaveFile = async ({ fileId, body }: any) => {
       await saveFileRL.consume(connection.userId, 1)
       return this.fileManager?.saveFile(fileId, body)
     }
 
-    // Handle moving a file
-    const handleMoveFile: SocketHandler = ({ fileId, folderId }: any) => {
+    const handleMoveFile = ({ fileId, folderId }: any) => {
       return this.fileManager?.moveFile(fileId, folderId)
     }
 
-    // Handle listing apps
-    const handleListApps: SocketHandler = async (_: any) => {
-      if (!this.dokkuClient)
-        throw Error("Failed to retrieve apps list: No Dokku client")
-      return { success: true, apps: await this.dokkuClient.listApps() }
+    // *** Dokku-based events (unchanged) ***
+    const handleListApps = async (_: any) => {
+      if (!this.dokkuClient) {
+        throw new Error("No Dokku client available.")
+      }
+      return {
+        success: true,
+        apps: await this.dokkuClient.listApps(),
+      }
     }
 
-    // Handle getting app creation timestamp
-    const handleGetAppCreatedAt: SocketHandler = async ({ appName }) => {
-      if (!this.dokkuClient)
-        throw new Error(
-          "Failed to retrieve app creation timestamp: No Dokku client"
-        )
+    const handleGetAppCreatedAt = async ({ appName }: any) => {
+      if (!this.dokkuClient) {
+        throw new Error("No Dokku client available.")
+      }
       return {
         success: true,
         createdAt: await this.dokkuClient.getAppCreatedAt(appName),
       }
     }
 
-    // Handle checking if an app exists
-    const handleAppExists: SocketHandler = async ({ appName }) => {
+    const handleAppExists = async ({ appName }: any) => {
       if (!this.dokkuClient) {
-        console.log("Failed to check app existence: No Dokku client")
         return {
           success: false,
         }
       }
       if (!this.dokkuClient.isConnected) {
-        console.log(
-          "Failed to check app existence: The Dokku client is not connected"
-        )
         return {
           success: false,
         }
@@ -190,8 +235,9 @@ export class Sandbox {
       }
     }
 
-    // Handle deploying code
-    const handleDeploy: SocketHandler = async (_: any) => {
+    const handleDeploy = async (_: any) => {
+      // This references the SecureGitClient, 
+      // so we can push the project files to Dokku for deployment
       if (!this.gitClient) throw Error("No git client")
       if (!this.fileManager) throw Error("No file manager")
       await this.gitClient.pushFiles(
@@ -201,105 +247,91 @@ export class Sandbox {
       return { success: true }
     }
 
-    // Handle creating a file
-    const handleCreateFile: SocketHandler = async ({ name }: any) => {
+    // *** Create / rename / delete, etc. ***
+    const handleCreateFile = async ({ name }: any) => {
       await createFileRL.consume(connection.userId, 1)
       return { success: await this.fileManager?.createFile(name) }
     }
 
-    // Handle creating a folder
-    const handleCreateFolder: SocketHandler = async ({ name }: any) => {
+    const handleCreateFolder = async ({ name }: any) => {
       await createFolderRL.consume(connection.userId, 1)
       return { success: await this.fileManager?.createFolder(name) }
     }
 
-    // Handle renaming a file
-    const handleRenameFile: SocketHandler = async ({
-      fileId,
-      newName,
-    }: any) => {
+    const handleRenameFile = async ({ fileId, newName }: any) => {
       await renameFileRL.consume(connection.userId, 1)
       return this.fileManager?.renameFile(fileId, newName)
     }
 
-    // Handle deleting a file
-    const handleDeleteFile: SocketHandler = async ({ fileId }: any) => {
+    const handleDeleteFile = async ({ fileId }: any) => {
       await deleteFileRL.consume(connection.userId, 1)
       return this.fileManager?.deleteFile(fileId)
     }
 
-    // Handle deleting a folder
-    const handleDeleteFolder: SocketHandler = ({ folderId }: any) => {
+    const handleDeleteFolder = ({ folderId }: any) => {
       return this.fileManager?.deleteFolder(folderId)
     }
 
-    // Handle creating a terminal session
-    const handleCreateTerminal: SocketHandler = async ({ id }: any) => {
+    // *** Terminal management ***
+    const handleCreateTerminal = async ({ id }: any) => {
       await lockManager.acquireLock(this.sandboxId, async () => {
-        await this.terminalManager?.createTerminal(
-          id,
-          (responseString: string) => {
-            connection.socket.emit("terminalResponse", {
-              id,
-              data: responseString,
-            })
-            const port = extractPortNumber(responseString)
-            if (port) {
-              connection.socket.emit(
-                "previewURL",
-                "https://" + this.container?.getHost(port)
-              )
-            }
+        await this.terminalManager?.createTerminal(id, (output: string) => {
+          connection.socket.emit("terminalResponse", {
+            id,
+            data: output,
+          })
+          // If you see a local port in the output, transform it to a preview
+          const port = extractPortNumber(output)
+          if (port) {
+            connection.socket.emit("previewURL", `http://localhost:${port}`)
           }
-        )
+        })
       })
     }
 
-    // Handle resizing a terminal
-    const handleResizeTerminal: SocketHandler = ({ dimensions }: any) => {
+    const handleResizeTerminal = ({ dimensions }: any) => {
       this.terminalManager?.resizeTerminal(dimensions)
     }
 
-    // Handle sending data to a terminal
-    const handleTerminalData: SocketHandler = ({ id, data }: any) => {
+    const handleTerminalData = ({ id, data }: any) => {
       return this.terminalManager?.sendTerminalData(id, data)
     }
 
-    // Handle closing a terminal
-    const handleCloseTerminal: SocketHandler = ({ id }: any) => {
+    const handleCloseTerminal = ({ id }: any) => {
       return this.terminalManager?.closeTerminal(id)
     }
 
-    // Handle downloading files by download button
-    const handleDownloadFiles: SocketHandler = async () => {
+    // *** Download files as zip ***
+    const handleDownloadFiles = async () => {
       if (!this.fileManager) throw Error("No file manager")
-
-      // Get the Base64 encoded ZIP string
       const zipBase64 = await this.fileManager.getFilesForDownload()
-
       return { zipBlob: zipBase64 }
     }
 
     return {
       heartbeat: handleHeartbeat,
       getFile: handleGetFile,
-      downloadFiles: handleDownloadFiles,
       getFolder: handleGetFolder,
       saveFile: handleSaveFile,
       moveFile: handleMoveFile,
+
+      // Dokku handlers:
       listApps: handleListApps,
       getAppCreatedAt: handleGetAppCreatedAt,
       getAppExists: handleAppExists,
       deploy: handleDeploy,
+
       createFile: handleCreateFile,
       createFolder: handleCreateFolder,
       renameFile: handleRenameFile,
       deleteFile: handleDeleteFile,
       deleteFolder: handleDeleteFolder,
+
       createTerminal: handleCreateTerminal,
       resizeTerminal: handleResizeTerminal,
       terminalData: handleTerminalData,
       closeTerminal: handleCloseTerminal,
+      downloadFiles: handleDownloadFiles,
     }
   }
 }

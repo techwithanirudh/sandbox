@@ -4,6 +4,7 @@ import express, { Express } from "express"
 import fs from "fs"
 import { createServer } from "http"
 import { Server, Socket } from "socket.io"
+import Docker from "dockerode"
 
 import { ConnectionManager } from "./ConnectionManager"
 import { DokkuClient } from "./DokkuClient"
@@ -41,6 +42,7 @@ dotenv.config()
 const app: Express = express()
 const port = process.env.PORT || 4000
 app.use(cors())
+
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: {
@@ -49,19 +51,24 @@ const io = new Server(httpServer, {
 })
 
 // Middleware for socket authentication
-io.use(socketAuth) // Use the new socketAuth middleware
+io.use(socketAuth)
 
 // Check for required environment variables
-if (!process.env.DOKKU_HOST)
+if (!process.env.DOKKU_HOST) {
   console.warn("Environment variable DOKKU_HOST is not defined")
-if (!process.env.DOKKU_USERNAME)
+}
+if (!process.env.DOKKU_USERNAME) {
   console.warn("Environment variable DOKKU_USERNAME is not defined")
-if (!process.env.DOKKU_KEY)
+}
+if (!process.env.DOKKU_KEY) {
   console.warn("Environment variable DOKKU_KEY is not defined")
+}
 
 // Initialize Dokku client
 const dokkuClient =
-  process.env.DOKKU_HOST && process.env.DOKKU_KEY && process.env.DOKKU_USERNAME
+  process.env.DOKKU_HOST &&
+  process.env.DOKKU_KEY &&
+  process.env.DOKKU_USERNAME
     ? new DokkuClient({
         host: process.env.DOKKU_HOST,
         username: process.env.DOKKU_USERNAME,
@@ -79,10 +86,21 @@ const gitClient =
       )
     : null
 
+// ----------------------------------------------------
+//       CREATE THE DOCKER CLIENT USING DOCKERODE
+// ----------------------------------------------------
+const dockerClient = new Docker({
+  // Adjust settings for your Docker environment.
+  // For instance:
+  // socketPath: "/var/run/docker.sock"
+  // or host: "127.0.0.1",
+  // port: 2375,
+})
+
 // Handle a client connecting to the server
 io.on("connection", async (socket) => {
   try {
-    // This data comes is added by our authentication middleware
+    // This data is added by our authentication middleware
     const data = socket.data as {
       userId: string
       sandboxId: string
@@ -104,28 +122,28 @@ io.on("connection", async (socket) => {
       const sandbox =
         sandboxes[data.sandboxId] ??
         new Sandbox(data.sandboxId, data.type, {
+          // Pass all three: Docker client, Dokku, Git
+          dockerClient,
           dokkuClient,
           gitClient,
         })
       sandboxes[data.sandboxId] = sandbox
 
-      // This callback recieves an update when the file list changes, and notifies all relevant connections.
+      // This callback receives an update when the file list changes,
+      // and notifies all relevant connections in the same sandbox.
       const sendFileNotifications = (files: (TFolder | TFile)[]) => {
         connections
           .connectionsForSandbox(data.sandboxId)
-          .forEach((socket: Socket) => {
-            socket.emit("loaded", files)
+          .forEach((connSocket: Socket) => {
+            connSocket.emit("loaded", files)
           })
       }
 
-      // Initialize the sandbox container
-      // The file manager and terminal managers will be set up if they have been closed
+      // Initialize the sandbox container environment
       await sandbox.initialize(sendFileNotifications)
       socket.emit("loaded", sandbox.fileManager?.files)
 
       // Register event handlers for the sandbox
-      // For each event handler, listen on the socket for that event
-      // Pass connection-specific information to the handlers
       Object.entries(
         sandbox.handlers({
           userId: data.userId,
@@ -158,8 +176,8 @@ io.on("connection", async (socket) => {
             data.isOwner
           )
 
-          // If the owner has disconnected from all sockets, close open terminals and file watchers.o
-          // The sandbox itself will timeout after the heartbeat stops.
+          // If the owner has disconnected from all sockets, close open terminals and watchers.
+          // The sandbox itself will eventually shut down if you have a timeout.
           if (data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
             await sandbox.disconnect()
             socket.broadcast.emit(

@@ -11,8 +11,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/dockerode": "^3.3.34",
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
+    "dockerode": "^4.0.3",
     "dotenv": "^16.4.5",
     "e2b": "^1.0.5",
     "express": "^4.19.2",
