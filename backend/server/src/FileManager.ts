@@ -1,3 +1,4 @@
+// /backend/server/src/FileManager.ts
 import { Container } from "dockerode"
 import JSZip from "jszip"
 import path from "path"
@@ -8,11 +9,10 @@ import { TFile, TFileData, TFolder } from "./types"
 import { generateFileStructure } from "./utils-filetree"
 
 /**
- * Where in the container the project files live.
- * Make sure your Docker image has inotify-tools installed, e.g.:
- *   RUN apt-get update && apt-get install -y inotify-tools
+ * We'll store all project files in /workspace/data inside the container.
+ * Make sure your Dockerfile or container environment has that folder.
  */
-const PROJECT_DIR = "~/sandbox/backend/server/d-data"
+const PROJECT_DIR = "/workspace/data"
 
 export class FileManager {
   private sandboxId: string
@@ -37,7 +37,7 @@ export class FileManager {
   }
 
   async initialize() {
-    // Get the existing remote file structure and sync it to container
+    // Download remote structure, sync to container, etc.
     await this.updateFileStructure()
     await this.updateFileData()
 
@@ -50,11 +50,12 @@ export class FileManager {
     // Then load local container files
     await this.loadLocalFiles()
 
-    // Start the watchers
+    // Start watchers with inotifywait
     await this.startWatcher(PROJECT_DIR)
   }
 
   private async loadLocalFiles() {
+    // List all files from the container
     const { stdout } = await this.containerExec(`find "${PROJECT_DIR}" -type f`)
     const localPaths = stdout
       .split("\n")
@@ -67,16 +68,7 @@ export class FileManager {
 
   // Launch `inotifywait` in the container
   private async startWatcher(dir: string) {
-    // We do a `docker exec -i <containerId> inotifywait -m -r <dir>`
-    // dockerode doesn’t have a built-in “spawn exec as a ChildProcess,” 
-    // so we hack it using the Docker CLI command, or we can emulate 
-    // a streaming approach with `container.exec({Cmd: [...]})`.
-
-    // For simplicity, let's do a local spawn of `docker exec`. 
-    // (You do need `docker` CLI installed on your host for this approach.)
-    // If you don’t want to rely on the CLI, you can do a more complex solution 
-    // hooking into dockerode streams. But this is easier to illustrate:
-
+    // We'll do `docker exec` via the local shell. That means your Node server must have docker CLI installed
     const containerInfo = await this.container.inspect()
     const containerId = containerInfo.Id
 
@@ -107,22 +99,18 @@ export class FileManager {
   }
 
   private handleInotifyEvent(line: string) {
-    // Example line: "CREATE|/home/user/project/subfolder/|newfile.txt"
+    // Example line: "CREATE|/workspace/data/subfolder/|newfile.txt"
     const [rawEvent, watchDir, filename] = line.split("|")
     const eventTypes = rawEvent.split(",")
 
-    // For instance, if rawEvent = "CREATE,ISDIR", we know a folder was created
-    // We can do the same logic E2B watchers had: reload the file structure, 
-    // update internal state, emit to refreshFileList, etc.
-
     console.log("inotify event:", rawEvent, "dir:", watchDir, "file:", filename)
-    // Just re-load everything for simplicity:
-    // (In a more efficient approach, you'd only update the changed item.)
+
+    // For simplicity, we just reload everything and send a refresh
     this.loadLocalFiles()
     this.refreshFileList?.(this.files)
   }
 
-  // Exec a command inside the container, returning stdout/stderr
+  // Exec a command inside the container
   private async containerExec(cmd: string) {
     const exec = await this.container.exec({
       Cmd: ["bash", "-c", cmd],
@@ -144,17 +132,14 @@ export class FileManager {
     return { stdout, stderr }
   }
 
-  // Writes content to a file in the container
+  // Minimal echo-based approach
   private async writeToContainer(containerPath: string, data: string) {
-    // Minimal echo-based approach
     const escapedData = data.replace(/"/g, '\\"')
     const cmd = `mkdir -p "$(dirname "${containerPath}")" && echo "${escapedData}" > "${containerPath}"`
     await this.containerExec(cmd)
   }
 
-  /**
-   * Remote => local
-   */
+  // Download from remote => local
   private async updateFileData() {
     const remotePaths = await RemoteFileStorage.getSandboxPaths(this.sandboxId)
     const localPaths = remotePaths.map((r) =>
@@ -185,7 +170,7 @@ export class FileManager {
     return results
   }
 
-  // *** The original FileManager-based methods ***
+  // ---------- FileManager Methods ----------
 
   async getFile(fileId: string): Promise<string | undefined> {
     const containerPath = path.posix.join(PROJECT_DIR, fileId)
@@ -208,10 +193,8 @@ export class FileManager {
       throw new Error("File size too large. Please reduce the file size.")
     }
 
-    // Save to remote
     await RemoteFileStorage.saveFile(`projects/${this.sandboxId}${fileId}`, body)
 
-    // Update local cache
     let file = this.fileData.find((f) => f.id === fileId)
     if (file) {
       file.data = body
@@ -220,7 +203,6 @@ export class FileManager {
       this.fileData.push(file)
     }
 
-    // Write to container
     await this.writeToContainer(path.posix.join(PROJECT_DIR, fileId), body)
   }
 
@@ -262,10 +244,7 @@ export class FileManager {
     const { stdout } = await this.containerExec(
       `find "${PROJECT_DIR}" -path "${PROJECT_DIR}/node_modules" -prune -o -type f -print`
     )
-    const filePaths = stdout
-      .split("\n")
-      .map((p) => p.trim())
-      .filter(Boolean)
+    const filePaths = stdout.split("\n").map((p) => p.trim()).filter(Boolean)
 
     for (const containerPath of filePaths) {
       const relative = path.posix.relative(PROJECT_DIR, containerPath)
@@ -274,10 +253,7 @@ export class FileManager {
       if (existing) {
         existing.data = content.stdout
       } else {
-        this.fileData.push({
-          id: relative,
-          data: content.stdout,
-        })
+        this.fileData.push({ id: relative, data: content.stdout })
       }
     }
     return this.fileData
@@ -306,9 +282,7 @@ export class FileManager {
 
   async createFolder(name: string) {
     const id = `/${name}`
-    await this.containerExec(
-      `mkdir -p "${path.posix.join(PROJECT_DIR, id)}"`
-    )
+    await this.containerExec(`mkdir -p "${path.posix.join(PROJECT_DIR, id)}"`)
   }
 
   async renameFile(fileId: string, newName: string) {
@@ -337,11 +311,7 @@ export class FileManager {
     const dataEntry = this.fileData.find((f) => f.id === fileId)
     if (!dataEntry) return this.files
 
-    // Remove from container
-    await this.containerExec(
-      `rm -f "${path.posix.join(PROJECT_DIR, fileId)}"`
-    )
-    // Remove from remote
+    await this.containerExec(`rm -f "${path.posix.join(PROJECT_DIR, fileId)}"`)
     await RemoteFileStorage.deleteFile(`projects/${this.sandboxId}${fileId}`)
     return this.updateFileStructure()
   }
