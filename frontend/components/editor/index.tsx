@@ -980,9 +980,9 @@ export default function CodeEditor({
     )
 
   return (
-    <>
-      {/* Copilot DOM elements */}
+    <div className="flex max-h-full overflow-hidden">
       <PreviewProvider>
+        {/* Copilot DOM elements */}
         <div ref={generateRef} />
         <div ref={suggestionRef} className="absolute">
           <AnimatePresence>
@@ -1304,7 +1304,7 @@ export default function CodeEditor({
           )}
         </ResizablePanelGroup>
       </PreviewProvider>
-    </>
+    </div>
   )
 }
 
