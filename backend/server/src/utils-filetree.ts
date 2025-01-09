@@ -1,4 +1,4 @@
-// utils-filetree.ts
+// /backend/server/src/utils-filetree.ts
 import { TFile, TFolder } from "./types"
 
 /**
@@ -57,7 +57,7 @@ export function generateFileStructure(paths: string[]): (TFolder | TFile)[] {
       const isFile = i === parts.length - 1 // last part is presumably file
 
       // See if this folder/file already exists
-      const existing = current.children.find(child => child.name === part)
+      let existing = current.children.find(child => child.name === part)
 
       if (existing) {
         // If it's a folder, descend into it

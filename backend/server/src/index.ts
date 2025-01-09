@@ -1,3 +1,4 @@
+// /backend/server/src/index.ts
 import cors from "cors"
 import dotenv from "dotenv"
 import express, { Express } from "express"
@@ -75,7 +76,12 @@ const dokkuClient =
         privateKey: fs.readFileSync(process.env.DOKKU_KEY),
       })
     : null
-dokkuClient?.connect()
+
+if (dokkuClient) {
+  dokkuClient.connect().catch(error => {
+    console.error("Failed to connect Dokku client:", error)
+  })
+}
 
 // Initialize Git client used to deploy Dokku apps
 const gitClient =
@@ -92,7 +98,7 @@ const gitClient =
 const dockerClient = new Docker({
   // Adjust settings for your Docker environment.
   // For instance:
-  // socketPath: "/var/run/docker.sock"
+  socketPath: "/var/run/docker.sock", // Ensure this is correct for your environment
   // or host: "127.0.0.1",
   // port: 2375,
 })
@@ -108,26 +114,34 @@ io.on("connection", async (socket) => {
       type: string
     }
 
+    console.log(`User ${data.userId} connected to sandbox ${data.sandboxId} as ${data.isOwner ? 'owner' : 'collaborator'}`)
+
     // Register the connection
     connections.addConnectionForSandbox(socket, data.sandboxId, data.isOwner)
+    console.log(`Registered connection for sandbox ${data.sandboxId}`)
 
     // Disable access unless the sandbox owner is connected
     if (!data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
+      console.log(`Access denied for user ${data.userId} to sandbox ${data.sandboxId} because owner is not connected`)
       socket.emit("disableAccess", "The sandbox owner is not connected.")
       return
     }
 
     try {
       // Create or retrieve the sandbox manager for the given sandbox ID
-      const sandbox =
-        sandboxes[data.sandboxId] ??
-        new Sandbox(data.sandboxId, data.type, {
+      let sandbox = sandboxes[data.sandboxId]
+      if (!sandbox) {
+        sandbox = new Sandbox(data.sandboxId, data.type, {
           // Pass all three: Docker client, Dokku, Git
           dockerClient,
           dokkuClient,
           gitClient,
         })
-      sandboxes[data.sandboxId] = sandbox
+        sandboxes[data.sandboxId] = sandbox
+        console.log(`Created new Sandbox instance for sandbox ${data.sandboxId}`)
+      } else {
+        console.log(`Reusing existing Sandbox instance for sandbox ${data.sandboxId}`)
+      }
 
       // This callback receives an update when the file list changes,
       // and notifies all relevant connections in the same sandbox.
@@ -141,20 +155,24 @@ io.on("connection", async (socket) => {
 
       // Initialize the sandbox container environment
       await sandbox.initialize(sendFileNotifications)
+      console.log(`Sandbox ${data.sandboxId} initialized`)
+
       socket.emit("loaded", sandbox.fileManager?.files)
+      console.log(`Sent initial file list to user ${data.userId} for sandbox ${data.sandboxId}`)
 
       // Register event handlers for the sandbox
-      Object.entries(
-        sandbox.handlers({
-          userId: data.userId,
-          isOwner: data.isOwner,
-          socket,
-        })
-      ).forEach(([event, handler]) => {
+      const handlers = sandbox.handlers({
+        userId: data.userId,
+        isOwner: data.isOwner,
+        socket,
+      })
+
+      Object.entries(handlers).forEach(([event, handler]) => {
         socket.on(
           event,
           async (options: any, callback?: (response: any) => void) => {
             try {
+              console.log(`Handling event "${event}" for user ${data.userId} in sandbox ${data.sandboxId}`)
               const result = await handler(options)
               callback?.(result)
             } catch (e: any) {
@@ -165,25 +183,31 @@ io.on("connection", async (socket) => {
       })
 
       socket.emit("ready")
+      console.log(`User ${data.userId} is ready in sandbox ${data.sandboxId}`)
 
       // Handle disconnection event
       socket.on("disconnect", async () => {
         try {
+          console.log(`User ${data.userId} disconnected from sandbox ${data.sandboxId}`)
           // Deregister the connection
           connections.removeConnectionForSandbox(
             socket,
             data.sandboxId,
             data.isOwner
           )
+          console.log(`Deregistered connection for sandbox ${data.sandboxId}`)
 
           // If the owner has disconnected from all sockets, close open terminals and watchers.
           // The sandbox itself will eventually shut down if you have a timeout.
           if (data.isOwner && !connections.ownerIsConnected(data.sandboxId)) {
+            console.log(`Owner disconnected from sandbox ${data.sandboxId}. Disconnecting sandbox.`)
             await sandbox.disconnect()
+            delete sandboxes[data.sandboxId]
             socket.broadcast.emit(
               "disableAccess",
               "The sandbox owner has disconnected."
             )
+            console.log(`Sandbox ${data.sandboxId} disconnected and removed from active sandboxes`)
           }
         } catch (e: any) {
           handleErrors("Error disconnecting:", e, socket)
