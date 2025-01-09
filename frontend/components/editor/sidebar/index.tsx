@@ -138,9 +138,10 @@ export default function Sidebar({
         > */}
           {sortedFiles.length === 0 ? (
             <div className="w-full flex flex-col justify-center">
-              {new Array(6).fill(0).map((_, i) => (
+              {/* {new Array(6).fill(0).map((_, i) => (
                 <Skeleton key={i} className="h-[1.625rem] mb-0.5 rounded-sm" />
-              ))}
+              ))} */}
+              No Files Available
             </div>
           ) : (
             <>
