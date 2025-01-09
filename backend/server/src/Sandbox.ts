@@ -97,7 +97,9 @@ export class Sandbox {
     }
 
     const templateTypes = ["vanillajs", "reactjs", "nextjs", "streamlit", "php"]
-    const baseImage = "gitwit-universal"
+    const baseImage = templateTypes.includes(this.type)
+      ? `gitwit-${this.type}`
+      : "base"
 
     // Make sure we have the image (pull if needed)
     try {
