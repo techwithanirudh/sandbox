@@ -1,14 +1,14 @@
 // /backend/server/src/FileManager.ts
 
-import path from "path"
 import { Container } from "dockerode"
+import path from "path"
 import tar from "tar-stream"
-import { TFile, TFileData, TFolder } from "./types"
 import RemoteFileStorage from "./RemoteFileStorage"
 import { MAX_BODY_SIZE } from "./ratelimit"
+import { TFile, TFileData, TFolder } from "./types"
 import { generateFileStructure } from "./utils-filetree"
 
-const PROJECT_DIR = "/workspace/data"
+const PROJECT_DIR = "/workspaces/project"
 
 export class FileManager {
   private sandboxId: string

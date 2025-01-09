@@ -1,5 +1,5 @@
 // /backend/server/src/Terminal.ts
-import Docker, { Container, Exec } from "dockerode"
+import { Container } from "dockerode"
 import { Duplex } from "stream"
 
 export class Terminal {
@@ -45,7 +45,7 @@ export class Terminal {
     await this.resize(cols, rows)
 
     // Some initial commands
-    this.write(`cd /workspace/data\r`)
+    this.write(`cd /workspaces/project\r`)
     this.write(`clear\r`)
   }
 

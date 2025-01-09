@@ -1,6 +1,6 @@
 // /backend/server/src/ContainerSession.ts
+import { ChildProcess, spawn } from "child_process"
 import { Container } from "dockerode"
-import { spawn, ChildProcess } from "child_process"
 
 export class ContainerSession {
   private container: Container
@@ -20,7 +20,7 @@ export class ContainerSession {
    */
   public async execCmd(
     cmd: string,
-    cwd = "/workspace/data",
+    cwd = "/workspaces/project",
   ): Promise<{ stdout: string; stderr: string }> {
     const exec = await this.container.exec({
       Cmd: ["bash", "-c", `cd "${cwd}" && ${cmd}`],
