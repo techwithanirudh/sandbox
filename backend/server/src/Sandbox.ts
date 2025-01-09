@@ -89,23 +89,23 @@ export class Sandbox {
       }
     }
 
-    const templateTypes = ["vanillajs", "reactjs", "nextjs", "streamlit", "php"]
-    const baseImage = "mcr.microsoft.com/devcontainers/universal:linux"
-
-    // Make sure we have the image (pull if needed)
-    try {
-      await this.dockerClient.pull(baseImage)
-      console.log(`Pulled image ${baseImage}`)
-    } catch (error) {
-      console.error(`Error pulling image ${baseImage}:`, error)
-      throw error
-    }
-
     try {
       const existing = this.dockerClient.getContainer(this.sandboxId);
       await existing.remove({ force: true }); 
     } catch (e) {
-      console.log("Container No")
+      console.log("Removing container")
+    }
+
+    const templateTypes = ["vanillajs", "reactjs", "nextjs", "streamlit", "php"]
+    const baseImage = "gitwit-universal"
+
+    // Make sure we have the image (pull if needed)
+    try {
+      await this.dockerClient.pull(baseImage)
+      console.log(`Pulling image from docker hub ${baseImage}`)
+    } catch (error) {
+      console.error(`Error pulling image ${baseImage}:`, error)
+      // throw error
     }
 
     // Create + start container
